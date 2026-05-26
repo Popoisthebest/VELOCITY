@@ -1,0 +1,5639 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+src/
+  client/
+    components/
+      BulletTracer.tsx
+      FPSCamera.tsx
+      GameCanvas.tsx
+      RemotePlayer.tsx
+      Scoreboard.tsx
+    network/
+      NetworkClient.ts
+    scenes/
+      ArenaMap.tsx
+    store/
+      gameStore.ts
+    systems/
+      InputManager.ts
+      InterpolationSystem.ts
+      PredictionSystem.ts
+      ShootingSystem.ts
+    ui/
+      HUD.tsx
+      JoinScreen.tsx
+    App.tsx
+    index.css
+    main.tsx
+  server/
+    game/
+      CombatSystem.ts
+      PlayerEntity.ts
+    network/
+      WebSocketServer.ts
+    rooms/
+      Room.ts
+      RoomManager.ts
+    index.ts
+  shared/
+    constants/
+      index.ts
+    maps/
+      arena.ts
+    physics/
+      collision.ts
+      movement.ts
+    protocol/
+      index.ts
+    types/
+      index.ts
+.env.example
+.gitignore
+index.html
+package.json
+tsconfig.json
+tsconfig.server.json
+vite.config.ts
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/client/components/BulletTracer.tsx">
+// ========================================
+// Client-Side Bullet Traces & Hit Sparks
+// High-performance pre-allocated object pool for visual combat FX
+// ========================================
+
+import React, { useEffect, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import type { Vec3 } from '@shared/types/index.js';
+import * as THREE from 'three';
+
+interface TracerFX {
+  origin: THREE.Vector3;
+  target: THREE.Vector3;
+  startTime: number;
+  duration: number;
+  active: boolean;
+}
+
+interface SparkFX {
+  position: THREE.Vector3;
+  startTime: number;
+  duration: number;
+  active: boolean;
+}
+
+const POOL_SIZE = 25;
+const tracersPool: TracerFX[] = Array.from({ length: POOL_SIZE }, () => ({
+  origin: new THREE.Vector3(),
+  target: new THREE.Vector3(),
+  startTime: 0,
+  duration: 150, // ms
+  active: false,
+}));
+
+const sparksPool: SparkFX[] = Array.from({ length: POOL_SIZE }, () => ({
+  position: new THREE.Vector3(),
+  startTime: 0,
+  duration: 200, // ms
+  active: false,
+}));
+
+let currentTracerIndex = 0;
+let currentSparkIndex = 0;
+
+/**
+ * Global function to emit a tracer line and hit spark.
+ * Can be imported and called from anywhere (e.g. ShootingSystem, NetworkClient).
+ */
+export function addVisualTracer(origin: Vec3, target: Vec3): void {
+  // Setup tracer
+  const tracer = tracersPool[currentTracerIndex];
+  tracer.origin.set(origin.x, origin.y, origin.z);
+  tracer.target.set(target.x, target.y, target.z);
+  tracer.startTime = Date.now();
+  tracer.active = true;
+  currentTracerIndex = (currentTracerIndex + 1) % POOL_SIZE;
+
+  // Setup spark
+  const spark = sparksPool[currentSparkIndex];
+  spark.position.set(target.x, target.y, target.z);
+  spark.startTime = Date.now();
+  spark.active = true;
+  currentSparkIndex = (currentSparkIndex + 1) % POOL_SIZE;
+}
+
+export function BulletTracers() {
+  const groupRef = useRef<THREE.Group>(null);
+  const tracerMeshes = useRef<(THREE.Line | null)[]>([]);
+  const sparkMeshes = useRef<(THREE.Mesh | null)[]>([]);
+
+  // Create empty arrays to map in React rendering
+  const dummyArray = Array.from({ length: POOL_SIZE });
+
+  useFrame(() => {
+    const now = Date.now();
+
+    // Update Tracers
+    for (let i = 0; i < POOL_SIZE; i++) {
+      const data = tracersPool[i];
+      const mesh = tracerMeshes.current[i];
+
+      if (mesh) {
+        if (data.active) {
+          const elapsed = now - data.startTime;
+          if (elapsed >= data.duration) {
+            data.active = false;
+            mesh.visible = false;
+          } else {
+            mesh.visible = true;
+            // Update points in buffer geometry
+            const posAttr = mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+            posAttr.setXYZ(0, data.origin.x, data.origin.y, data.origin.z);
+            posAttr.setXYZ(1, data.target.x, data.target.y, data.target.z);
+            posAttr.needsUpdate = true;
+
+            // Fade opacity
+            const mat = mesh.material as THREE.LineBasicMaterial;
+            mat.opacity = 1.0 - elapsed / data.duration;
+          }
+        } else {
+          mesh.visible = false;
+        }
+      }
+    }
+
+    // Update Sparks
+    for (let i = 0; i < POOL_SIZE; i++) {
+      const data = sparksPool[i];
+      const mesh = sparkMeshes.current[i];
+
+      if (mesh) {
+        if (data.active) {
+          const elapsed = now - data.startTime;
+          if (elapsed >= data.duration) {
+            data.active = false;
+            mesh.visible = false;
+          } else {
+            mesh.visible = true;
+            mesh.position.copy(data.position);
+
+            // Expand and fade out spark sphere
+            const t = elapsed / data.duration;
+            const scale = 0.15 + t * 0.4;
+            mesh.scale.set(scale, scale, scale);
+
+            const mat = mesh.material as THREE.MeshBasicMaterial;
+            mat.opacity = 1.0 - t;
+          }
+        } else {
+          mesh.visible = false;
+        }
+      }
+    }
+  });
+
+  return (
+    <group ref={groupRef}>
+      {/* Tracers rendering */}
+      {dummyArray.map((_, i) => {
+        // Pre-allocate buffer geometries
+        const geom = new THREE.BufferGeometry();
+        const positions = new Float32Array(6); // 2 points * 3 components
+        geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        return (
+          <line
+            key={`t_${i}`}
+            ref={(el) => { tracerMeshes.current[i] = el; }}
+            geometry={geom}
+          >
+            <lineBasicMaterial
+              color="#fbbf24" // amber yellow tracer
+              transparent
+              opacity={1}
+              depthWrite={false}
+            />
+          </line>
+        );
+      })}
+
+      {/* Sparks rendering */}
+      {dummyArray.map((_, i) => (
+        <mesh
+          key={`s_${i}`}
+          ref={(el) => { sparkMeshes.current[i] = el; }}
+          visible={false}
+        >
+          <sphereGeometry args={[0.5, 4, 4]} />
+          <meshBasicMaterial
+            color="#ef4444" // orange-red spark flash
+            transparent
+            opacity={1}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+</file>
+
+<file path="src/client/components/FPSCamera.tsx">
+// ========================================
+// Client-Side First-Person Camera Component
+// Manages viewport orientation, eye position, weapon bobbing, and recoil recovery
+// ========================================
+
+import React, { useRef } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
+import { useGameStore } from '../store/gameStore.js';
+import { inputManager } from '../systems/InputManager.js';
+import { PLAYER_HEIGHT, PLAYER_CROUCH_HEIGHT } from '@shared/constants/index.js';
+import * as THREE from 'three';
+
+export function FPSCamera() {
+  const { camera } = useThree();
+  const localPlayer = useGameStore(state => state.localPlayer);
+  const isDead = useGameStore(state => state.isDead);
+
+  // Bobbing variables
+  const bobTime = useRef(0);
+  const currentBobY = useRef(0);
+  const currentBobX = useRef(0);
+
+  // Visual recoil shake (separate from mouse input recoil)
+  const visualRecoilY = useRef(0);
+  const recoilVelocityY = useRef(0);
+
+  useFrame((state, delta) => {
+    if (!localPlayer || isDead) return;
+
+    const { position, velocity, crouching, grounded } = localPlayer;
+
+    // 1. Calculate eye height
+    const targetEyeHeight = crouching
+      ? PLAYER_CROUCH_HEIGHT - 0.1 // ~0.9
+      : PLAYER_HEIGHT - 0.2;       // ~1.6
+
+    // Smoothly lerp camera height when crouching/standing
+    const currentEyeY = THREE.MathUtils.lerp(
+      camera.position.y - position.y,
+      targetEyeHeight,
+      Math.min(delta * 15, 1.0)
+    );
+
+    // 2. Weapon Bobbing (only on ground and moving)
+    const horizSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+    if (grounded && horizSpeed > 0.1) {
+      // Frequency matches speed
+      bobTime.current += delta * horizSpeed * 2.0;
+
+      // Sinusoidal bobbing curves
+      const bobAmpY = 0.03 * (crouching ? 0.5 : 1.0);
+      const bobAmpX = 0.02 * (crouching ? 0.5 : 1.0);
+
+      currentBobY.current = Math.sin(bobTime.current * 2) * bobAmpY;
+      currentBobX.current = Math.cos(bobTime.current) * bobAmpX;
+    } else {
+      // Decay bobbing back to 0
+      currentBobY.current = THREE.MathUtils.lerp(currentBobY.current, 0, delta * 10);
+      currentBobX.current = THREE.MathUtils.lerp(currentBobX.current, 0, delta * 10);
+      bobTime.current = 0;
+    }
+
+    // 3. Visual Recoil decay (spring system)
+    // Lerp visual recoil back to 0 quickly
+    visualRecoilY.current = THREE.MathUtils.lerp(visualRecoilY.current, 0, delta * 12);
+
+    // Apply translation to camera position (eye height + bobbing)
+    camera.position.set(
+      position.x + currentBobX.current,
+      position.y + currentEyeY + currentBobY.current,
+      position.z
+    );
+
+    // 4. Camera Rotation
+    // Apply yaw and pitch directly from the input manager
+    const targetRotation = new THREE.Euler(0, 0, 0, 'YXZ');
+    targetRotation.x = inputManager.pitch + visualRecoilY.current;
+    targetRotation.y = inputManager.yaw;
+    camera.quaternion.setFromEuler(targetRotation);
+  });
+
+  return null;
+}
+</file>
+
+<file path="src/client/components/GameCanvas.tsx">
+// ========================================
+// Client-Side 3D R3F Canvas and Game Loop Controller
+// Drives local prediction, client shooting, scoreboard toggling, and network throttling
+// ========================================
+
+import React, { useEffect, useRef } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useGameStore } from "../store/gameStore.js";
+import { inputManager } from "../systems/InputManager.js";
+import { predictionSystem } from "../systems/PredictionSystem.js";
+import { shootingSystem } from "../systems/ShootingSystem.js";
+import { networkClient } from "../network/NetworkClient.js";
+import { addVisualTracer, BulletTracers } from "./BulletTracer.js";
+import { ArenaMap } from "../scenes/ArenaMap.js";
+import { FPSCamera } from "./FPSCamera.js";
+import { RemotePlayer } from "./RemotePlayer.js";
+import { processMovement } from "@shared/physics/movement.js";
+import {
+  resolveCollisions,
+  raycastMap,
+  raycastPlayer,
+} from "@shared/physics/collision.js";
+import { WEAPONS, NETWORK_INTERVAL } from "@shared/constants/index.js";
+import { PacketType } from "@shared/protocol/index.js";
+import type {
+  Vec3,
+  WeaponConfig,
+  PlayerState,
+  AABB,
+} from "@shared/types/index.js";
+import * as THREE from "three";
+
+function calculateLocalHitPoint(
+  origin: Vec3,
+  direction: Vec3,
+  weaponConfig: WeaponConfig,
+  remotePlayers: Map<string, PlayerState>,
+  mapBoxes: AABB[],
+): Vec3 {
+  const range = weaponConfig.range;
+  // Wall intersection
+  const wallHit = raycastMap(origin, direction, mapBoxes, range);
+  const maxDist = wallHit ? wallHit.distance : range;
+
+  let closestHitDist = maxDist;
+  let hitPoint: Vec3 = {
+    x: origin.x + direction.x * maxDist,
+    y: origin.y + direction.y * maxDist,
+    z: origin.z + direction.z * maxDist,
+  };
+
+  // Player intersections
+  for (const player of remotePlayers.values()) {
+    if (!player.alive) continue;
+    const playerHit = raycastPlayer(
+      origin,
+      direction,
+      player.position,
+      player.crouching,
+      closestHitDist,
+    );
+    if (playerHit && playerHit.distance < closestHitDist) {
+      closestHitDist = playerHit.distance;
+      hitPoint = playerHit.point;
+    }
+  }
+
+  return hitPoint;
+}
+
+function GameLoopController() {
+  const { camera } = useThree();
+  const localPlayer = useGameStore((state) => state.localPlayer);
+  const remotePlayers = useGameStore((state) => state.remotePlayers);
+  const mapData = useGameStore((state) => state.mapData);
+  const isDead = useGameStore((state) => state.isDead);
+  const gamePhase = useGameStore((state) => state.gamePhase);
+
+  const inputSequence = useRef(0);
+  const lastInputSentTime = useRef(0);
+
+  // FPS tracking
+  const fpsTimer = useRef(0);
+  const fpsCount = useRef(0);
+
+  useFrame((state, delta) => {
+    const now = Date.now();
+
+    // 1. Calculate FPS
+    fpsCount.current++;
+    fpsTimer.current += delta;
+    if (fpsTimer.current >= 0.5) {
+      useGameStore
+        .getState()
+        .setFps(Math.round(fpsCount.current / fpsTimer.current));
+      fpsCount.current = 0;
+      fpsTimer.current = 0;
+    }
+
+    if (!localPlayer || !mapData || isDead || gamePhase === "ended") return;
+
+    // 2. Sample Keyboard & Mouse orientation
+    const input = inputManager.getInputState(inputSequence.current++, delta);
+
+    // 3. Local Movement Prediction
+    const moveResult = processMovement(
+      localPlayer.position,
+      localPlayer.velocity,
+      localPlayer.grounded,
+      localPlayer.slideTime,
+      input,
+      delta,
+    );
+
+    const collResult = resolveCollisions(
+      moveResult.position,
+      moveResult.velocity,
+      moveResult.crouching,
+      mapData.boxes,
+    );
+
+    // Queue input locally for future reconciliation
+    predictionSystem.addInput(input);
+
+    // 4. Handle client-side shooting & reload prediction
+    const weaponConfig = WEAPONS[localPlayer.weapon];
+
+    // Check local reload timer
+    if (localPlayer.reloading) {
+      if (now >= localPlayer.reloadEndTime) {
+        useGameStore.getState().updateLocalPlayer({
+          ammo: weaponConfig.magazineSize,
+          reloading: false,
+        });
+      }
+    } else if (input.reload && localPlayer.ammo < weaponConfig.magazineSize) {
+      // Trigger reload
+      networkClient.send({ type: PacketType.C_RELOAD });
+      useGameStore.getState().updateLocalPlayer({
+        reloading: true,
+        reloadEndTime: now + weaponConfig.reloadTime,
+      });
+    }
+
+    // Trigger shoot
+    let didShoot = false;
+    let shootOrigin: Vec3 | null = null;
+    let shootDir: Vec3 | null = null;
+
+    if (input.shoot && !localPlayer.reloading && localPlayer.ammo > 0) {
+      const shot = shootingSystem.tryShoot(
+        camera,
+        localPlayer,
+        weaponConfig,
+        now,
+      );
+      if (shot) {
+        didShoot = true;
+        shootOrigin = shot.origin;
+        shootDir = shot.direction;
+
+        // Perform local hitscan to find tracer end point
+        const hitPoint = calculateLocalHitPoint(
+          shot.origin,
+          shot.direction,
+          weaponConfig,
+          remotePlayers,
+          mapData.boxes,
+        );
+
+        // Render tracer locally
+        addVisualTracer(shot.origin, hitPoint);
+
+        // Deduct ammo instantly for responsive UI
+        const nextAmmo = localPlayer.ammo - 1;
+        const autoReloading = nextAmmo <= 0;
+
+        useGameStore.getState().updateLocalPlayer({
+          ammo: nextAmmo,
+          reloading: autoReloading,
+          reloadEndTime: autoReloading ? now + weaponConfig.reloadTime : 0,
+        });
+
+        // Send Shoot Packet to server
+        networkClient.send({
+          type: PacketType.C_SHOOT,
+          origin: shot.origin,
+          direction: shot.direction,
+          timestamp: now,
+        });
+      }
+    }
+
+    // Update store with predicted local state
+    useGameStore.getState().setLocalPlayer({
+      ...localPlayer,
+      position: collResult.position,
+      velocity: collResult.velocity,
+      grounded: collResult.grounded,
+      crouching: moveResult.crouching,
+      sprinting: moveResult.sprinting,
+      sliding: moveResult.sliding,
+      slideTime: moveResult.slideTime,
+      rotation: { yaw: input.yaw, pitch: input.pitch },
+    });
+
+    // 5. Send Input to Server (60Hz / every frame for zero-lag prediction simulation)
+    networkClient.send({
+      type: PacketType.C_INPUT,
+      input,
+    });
+  });
+
+  return null;
+}
+
+export function GameCanvas() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const remotePlayers = useGameStore((state) => state.remotePlayers);
+  const remoteIds = Array.from(remotePlayers.keys());
+
+  // Listen for pointer lock setup
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      inputManager.setCanvas(canvas);
+
+      const onCanvasClick = () => {
+        if (!inputManager.isPointerLocked()) {
+          inputManager.requestPointerLock();
+        }
+      };
+
+      canvas.addEventListener("click", onCanvasClick);
+      return () => {
+        canvas.removeEventListener("click", onCanvasClick);
+      };
+    }
+  }, []);
+
+  // Listen for scoreboard Tab key toggles
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Tab") {
+        e.preventDefault();
+        useGameStore.getState().setShowScoreboard(true);
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Tab") {
+        e.preventDefault();
+        useGameStore.getState().setShowScoreboard(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
+
+  return (
+    <div className="w-full h-full relative">
+      <Canvas
+        ref={canvasRef}
+        shadows
+        gl={{ antialias: true, dpr: [1, 2] }}
+        camera={{ fov: 90, near: 0.1, far: 1000 }}
+      >
+        {/* Lights */}
+        <ambientLight intensity={0.75} />
+        <directionalLight
+          position={[15, 30, 15]}
+          intensity={1.8}
+          castShadow
+          shadow-mapSize-width={1024}
+          shadow-mapSize-height={1024}
+        />
+
+        {/* Sky styling matching sky color */}
+        <color attach="background" args={["#0b0d19"]} />
+        <fog attach="fog" args={["#0b0d19", 40, 120]} />
+
+        {/* Arena static geometry */}
+        <ArenaMap />
+
+        {/* First Person Camera */}
+        <FPSCamera />
+
+        {/* Remote Players */}
+        {remoteIds.map((id) => (
+          <RemotePlayer key={id} id={id} />
+        ))}
+
+        {/* Bullet Tracers and spark pool */}
+        <BulletTracers />
+
+        {/* Local Prediction Loop Controller */}
+        <GameLoopController />
+      </Canvas>
+    </div>
+  );
+}
+</file>
+
+<file path="src/client/components/RemotePlayer.tsx">
+// ========================================
+// Client-Side Remote Player Rendering
+// Renders other players as 3D capsules with nametags, health bars, and smooth frame interpolation
+// ========================================
+
+import React, { useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import { Html } from '@react-three/drei';
+import { interpolationSystem } from '../systems/InterpolationSystem.js';
+import { PLAYER_HEIGHT, PLAYER_CROUCH_HEIGHT, PLAYER_RADIUS } from '@shared/constants/index.js';
+import { useGameStore } from '../store/gameStore.js';
+import * as THREE from 'three';
+
+interface RemotePlayerProps {
+  id: string;
+}
+
+function getPlayerColor(id: string): string {
+  const colors = [
+    '#3b82f6', // blue
+    '#10b981', // green
+    '#ec4899', // pink
+    '#8b5cf6', // purple
+    '#f59e0b', // amber
+    '#06b6d4', // cyan
+  ];
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
+export function RemotePlayer({ id }: RemotePlayerProps) {
+  const groupRef = useRef<THREE.Group>(null);
+  const capsuleRef = useRef<THREE.Mesh>(null);
+  const color = getPlayerColor(id);
+
+  // Subscribe to local health/alive state to render nameplates
+  const playerState = useGameStore(state => state.remotePlayers.get(id));
+
+  useFrame(() => {
+    if (!groupRef.current) return;
+
+    // Retrieve smooth interpolated state for this frame
+    const renderTime = Date.now() - 100; // 100ms interpolation buffer
+    const interp = interpolationSystem.getInterpolatedState(id, renderTime);
+
+    if (interp) {
+      // 1. Update overall group position
+      groupRef.current.position.set(interp.position.x, interp.position.y, interp.position.z);
+
+      // 2. Update mesh rotation
+      groupRef.current.rotation.y = interp.rotation.yaw;
+
+      // 3. Handle crouch scaling dynamically
+      if (capsuleRef.current) {
+        const height = interp.crouching ? PLAYER_CROUCH_HEIGHT : PLAYER_HEIGHT;
+        capsuleRef.current.scale.set(1, interp.crouching ? (PLAYER_CROUCH_HEIGHT / PLAYER_HEIGHT) : 1.0, 1);
+        capsuleRef.current.position.y = height / 2;
+      }
+
+      // Make sure the group is visible
+      groupRef.current.visible = interp.alive;
+    } else if (playerState) {
+      // Fallback to last known store state
+      groupRef.current.position.set(playerState.position.x, playerState.position.y, playerState.position.z);
+      groupRef.current.rotation.y = playerState.rotation.yaw;
+      groupRef.current.visible = playerState.alive;
+    }
+  });
+
+  if (!playerState || !playerState.alive) return null;
+
+  return (
+    <group ref={groupRef}>
+      {/* 3D Capsule Hitbox / Body */}
+      <mesh ref={capsuleRef}>
+        <capsuleGeometry args={[PLAYER_RADIUS, PLAYER_HEIGHT - PLAYER_RADIUS * 2, 8, 16]} />
+        <meshStandardMaterial
+          color={color}
+          roughness={0.4}
+          metalness={0.2}
+          flatShading
+        />
+      </mesh>
+
+      {/* Head Indicator (visor look) */}
+      <mesh position={[0, PLAYER_HEIGHT - 0.3, 0.2]}>
+        <boxGeometry args={[0.5, 0.15, 0.2]} />
+        <meshStandardMaterial color="#0f172a" roughness={0.1} />
+      </mesh>
+
+      {/* Nametag & Health Bar HTML overlay */}
+      <Html
+        position={[0, PLAYER_HEIGHT + 0.4, 0]}
+        center
+        distanceFactor={15}
+        occlude
+      >
+        <div className="flex flex-col items-center select-none pointer-events-none text-center">
+          {/* Health bar container */}
+          <div className="w-16 h-1.5 bg-gray-900/80 border border-gray-900 rounded overflow-hidden mb-1">
+            <div
+              className="h-full bg-emerald-500 transition-all duration-100"
+              style={{ width: `${playerState.health}%` }}
+            />
+          </div>
+          {/* Nickname */}
+          <span
+            className="px-1.5 py-0.5 rounded text-xs font-bold text-white tracking-wide shadow"
+            style={{ backgroundColor: `${color}cc` }}
+          >
+            {playerState.nickname}
+          </span>
+        </div>
+      </Html>
+    </group>
+  );
+}
+</file>
+
+<file path="src/client/components/Scoreboard.tsx">
+// ========================================
+// Client-Side Scoreboard Component
+// Overlay showing current room player ranks, kills, deaths, K/D, and pings
+// ========================================
+
+import React from "react";
+import { useGameStore } from "../store/gameStore.js";
+import type { PlayerState } from "@shared/types/index.js";
+
+function formatTime(ms: number): string {
+  const totalSecs = Math.ceil(ms / 1000);
+  const mins = Math.floor(totalSecs / 60);
+  const secs = totalSecs % 60;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+export function Scoreboard() {
+  const showScoreboard = useGameStore((state) => state.showScoreboard);
+  const localPlayer = useGameStore((state) => state.localPlayer);
+  const remotePlayers = useGameStore((state) => state.remotePlayers);
+  const gamePhase = useGameStore((state) => state.gamePhase);
+  const timeRemaining = useGameStore((state) => state.timeRemaining);
+  const killLimit = useGameStore((state) => state.killLimit);
+  const localPlayerId = useGameStore((state) => state.playerId);
+
+  if (!showScoreboard) return null;
+
+  // Gather all players
+  const allPlayers: PlayerState[] = [];
+  if (localPlayer) {
+    allPlayers.push(localPlayer);
+  }
+  for (const p of remotePlayers.values()) {
+    allPlayers.push(p);
+  }
+
+  // Sort by score descending, then kills descending
+  allPlayers.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    if (b.kills !== a.kills) {
+      return b.kills - a.kills;
+    }
+    return a.deaths - b.deaths;
+  });
+
+  return (
+    <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-md flex items-center justify-center z-50 pointer-events-none">
+      <div className="w-full max-w-2xl glass-panel rounded-xl overflow-hidden shadow-2xl p-6 pointer-events-auto select-none border border-slate-700/30">
+        {/* Header */}
+        <div className="flex justify-between items-center border-b border-slate-700/50 pb-4 mb-4">
+          <div>
+            <h2 className="text-xl font-black text-amber-500 uppercase tracking-widest">
+              Scoreboard
+            </h2>
+            <p className="text-xs text-slate-400 mt-1 uppercase">
+              Phase:{" "}
+              <span className="font-semibold text-slate-300">{gamePhase}</span>{" "}
+              | Limit:{" "}
+              <span className="font-semibold text-slate-300">
+                {killLimit} kills
+              </span>
+            </p>
+          </div>
+          <div className="text-right">
+            <div className="text-2xl font-mono font-bold text-white tracking-wider">
+              {formatTime(timeRemaining)}
+            </div>
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+              Time Remaining
+            </span>
+          </div>
+        </div>
+
+        {/* Table */}
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-slate-800 text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <th className="py-2 px-3 w-10 text-center">Rank</th>
+              <th className="py-2 px-4">Player</th>
+              <th className="py-2 px-3 text-center">Score</th>
+              <th className="py-2 px-4 text-center">Kills</th>
+              <th className="py-2 px-4 text-center">Deaths</th>
+              <th className="py-2 px-4 text-center">Assists</th>
+              <th className="py-2 px-4 text-center">Streak</th>
+              <th className="py-2 px-4 text-center">K/D</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800/40">
+            {allPlayers.map((player, index) => {
+              const isSelf = player.id === localPlayerId;
+              const kd =
+                player.deaths === 0
+                  ? player.kills
+                  : player.kills / player.deaths;
+
+              return (
+                <tr
+                  key={player.id}
+                  className={`text-sm font-semibold transition-colors duration-150 ${
+                    isSelf
+                      ? "bg-amber-500/10 text-amber-300 border-l-4 border-amber-500"
+                      : "text-slate-300 hover:bg-slate-900/40"
+                  }`}
+                >
+                  <td className="py-3 px-3 text-center text-xs font-mono font-bold text-slate-500">
+                    #{index + 1}
+                  </td>
+                  <td className="py-3 px-4 font-bold flex items-center gap-2">
+                    {player.nickname}
+                    {isSelf && (
+                      <span className="text-[9px] font-extrabold uppercase px-1 bg-amber-500/20 text-amber-400 rounded">
+                        You
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-3 px-3 text-center font-mono font-bold text-amber-300">
+                    {player.score}
+                  </td>
+                  <td className="py-3 px-4 text-center font-mono font-bold text-slate-100">
+                    {player.kills}
+                  </td>
+                  <td className="py-3 px-4 text-center font-mono text-slate-400">
+                    {player.deaths}
+                  </td>
+                  <td className="py-3 px-4 text-center font-mono text-slate-400">
+                    {player.assists}
+                  </td>
+                  <td className="py-3 px-4 text-center font-mono text-slate-400">
+                    {player.streak}
+                  </td>
+                  <td className="py-3 px-4 text-center font-mono text-slate-400">
+                    {kd.toFixed(2)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {/* Footer instructions */}
+        <div className="mt-4 pt-3 border-t border-slate-800 text-center text-[10px] text-slate-500 uppercase tracking-wider">
+          Release{" "}
+          <kbd className="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-300 mx-0.5">
+            Tab
+          </kbd>{" "}
+          to return to game
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="src/client/network/NetworkClient.ts">
+// ========================================
+// Client-Side WebSocket Network client
+// Manages real-time connection, reconnections, ping, and dispatches packets
+// ========================================
+
+import {
+  decodePacket,
+  encodePacket,
+  PacketType,
+} from "@shared/protocol/index.js";
+import type { ClientPacket, ServerPacket } from "@shared/protocol/index.js";
+import { createDefaultPlayerState } from "@shared/types/index.js";
+import { useGameStore } from "../store/gameStore.js";
+import { predictionSystem } from "../systems/PredictionSystem.js";
+import { interpolationSystem } from "../systems/InterpolationSystem.js";
+import { inputManager } from "../systems/InputManager.js";
+
+export class NetworkClient {
+  private static instance: NetworkClient | null = null;
+  private ws: WebSocket | null = null;
+  private url = "";
+  private isConnecting = false;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private reconnectDelay = 1000;
+  private pingInterval: NodeJS.Timeout | null = null;
+  private lastPingSentTime = 0;
+
+  constructor() {}
+
+  public static getInstance(): NetworkClient {
+    if (!NetworkClient.instance) {
+      NetworkClient.instance = new NetworkClient();
+    }
+    return NetworkClient.instance;
+  }
+
+  public connect(url: string): void {
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN ||
+        this.ws.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
+
+    this.url = url;
+    this.isConnecting = true;
+    console.log(`[NetworkClient] Connecting to ${url}...`);
+
+    try {
+      this.ws = new WebSocket(url);
+      this.setupHandlers();
+    } catch (err) {
+      console.error("[NetworkClient] Connection error:", err);
+      this.scheduleReconnect();
+    }
+  }
+
+  private setupHandlers(): void {
+    if (!this.ws) return;
+
+    this.ws.onopen = () => {
+      console.log("[NetworkClient] Connected to server");
+      this.isConnecting = false;
+      this.reconnectDelay = 1000;
+      useGameStore.getState().setConnected(true);
+
+      // Start ping loop
+      this.startPingLoop();
+    };
+
+    this.ws.onmessage = (event) => {
+      try {
+        const packet = decodePacket(event.data.toString()) as ServerPacket;
+        this.handlePacket(packet);
+      } catch (err) {
+        console.error("[NetworkClient] Error decoding packet:", err);
+      }
+    };
+
+    this.ws.onclose = () => {
+      console.log("[NetworkClient] Connection closed");
+      useGameStore.getState().setConnected(false);
+      this.stopPingLoop();
+      this.scheduleReconnect();
+    };
+
+    this.ws.onerror = (error) => {
+      console.error("[NetworkClient] WebSocket error:", error);
+    };
+  }
+
+  private startPingLoop(): void {
+    this.pingInterval = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        const timestamp = Date.now();
+        this.lastPingSentTime = timestamp;
+        this.send({ type: PacketType.C_PING, timestamp });
+      }
+    }, 2000);
+  }
+
+  private stopPingLoop(): void {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimeout) return;
+
+    console.log(`[NetworkClient] Reconnecting in ${this.reconnectDelay}ms...`);
+    this.reconnectTimeout = setTimeout(() => {
+      this.reconnectTimeout = null;
+      this.reconnectDelay = Math.min(this.reconnectDelay * 2, 8000); // Backoff up to 8s
+      this.connect(this.url);
+    }, this.reconnectDelay);
+  }
+
+  public disconnect(): void {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    this.stopPingLoop();
+
+    if (this.ws) {
+      this.ws.onclose = null; // Prevent reconnect on explicit disconnect
+      this.ws.close();
+      this.ws = null;
+    }
+
+    useGameStore.getState().reset();
+    predictionSystem.clear();
+    interpolationSystem.clear();
+    console.log("[NetworkClient] Explicitly disconnected");
+  }
+
+  public send(packet: ClientPacket): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(encodePacket(packet));
+    }
+  }
+
+  public isConnected(): boolean {
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  private handlePacket(packet: ServerPacket): void {
+    const store = useGameStore.getState();
+
+    switch (packet.type) {
+      case PacketType.S_JOIN_ACK: {
+        store.setPlayerId(packet.playerId);
+        store.setRoomId(packet.roomId);
+        store.setMapData(packet.map);
+        store.setGamePhase(packet.state.phase, packet.state.timeRemaining);
+
+        // Populate players
+        const remoteMap = new Map();
+        for (const [id, state] of Object.entries(packet.state.players)) {
+          if (id === packet.playerId) {
+            store.setLocalPlayer(state);
+          } else {
+            remoteMap.set(id, state);
+          }
+        }
+        store.setRemotePlayers(remoteMap);
+        store.setInGame(true);
+        console.log("[NetworkClient] Joined room successfully:", packet.roomId);
+        break;
+      }
+
+      case PacketType.S_PLAYER_JOINED: {
+        if (packet.player.id !== store.playerId) {
+          store.addRemotePlayer(packet.player);
+        }
+        break;
+      }
+
+      case PacketType.S_PLAYER_LEFT: {
+        store.removeRemotePlayer(packet.playerId);
+        interpolationSystem.removePlayer(packet.playerId);
+        break;
+      }
+
+      case PacketType.S_SNAPSHOT: {
+        // Update match state from server
+        if (packet.match) {
+          store.setMatchState(
+            packet.match.phase,
+            packet.match.timeRemaining,
+            packet.match.killLimit,
+          );
+        }
+
+        // Measure ping (RTT / 2 is approximate latency)
+        if (this.lastPingSentTime > 0) {
+          const rtt = Date.now() - this.lastPingSentTime;
+          // Smooth the ping value
+          store.setPing(Math.round(rtt));
+          this.lastPingSentTime = 0; // reset
+        }
+
+        const localId = store.playerId;
+        if (!localId) return;
+
+        const serverPlayers = packet.players;
+        const lastProcessedInput = packet.lastProcessedInput;
+
+        // 1. Process local player prediction / reconciliation
+        const localServerState = serverPlayers[localId];
+        const localPlayer = store.localPlayer;
+
+        if (localServerState && localPlayer) {
+          if (localServerState.alive) {
+            // Reconcile client prediction
+            const mapBoxes = store.mapData?.boxes || [];
+            const reconciled = predictionSystem.reconcile(
+              localPlayer,
+              localServerState,
+              lastProcessedInput[localId] || 0,
+              mapBoxes,
+            );
+
+            // Update local player with reconciled movement + server authoritative stats (ammo, health, armor, kills, deaths)
+            store.setLocalPlayer({
+              ...localServerState,
+              position: reconciled.position,
+              velocity: reconciled.velocity,
+              grounded: reconciled.grounded,
+              // Keep local rotation so look controls don't jump!
+              rotation: localPlayer.rotation,
+            });
+          } else {
+            // Just snap to server state if dead
+            store.setLocalPlayer(localServerState);
+          }
+        }
+
+        // 2. Process remote players for interpolation
+        const remotePlayersMap = new Map<string, PlayerState>();
+
+        for (const [id, state] of Object.entries(serverPlayers)) {
+          if (id === localId) continue;
+
+          // Buffer snapshot for interpolation
+          interpolationSystem.addSnapshot(id, state, packet.timestamp);
+
+          // Get the current interpolated state for rendering
+          const renderTime = Date.now() - 100; // 100ms interpolation delay
+          const interpState = interpolationSystem.getInterpolatedState(
+            id,
+            renderTime,
+          );
+
+          if (interpState) {
+            remotePlayersMap.set(id, interpState);
+          } else {
+            remotePlayersMap.set(id, state); // Fallback to raw server state
+          }
+        }
+
+        store.setRemotePlayers(remotePlayersMap);
+        break;
+      }
+
+      case PacketType.S_HIT_CONFIRM: {
+        store.triggerHitMarker();
+        store.addDamageNumber(packet.hit.damage, packet.hit.headshot);
+        break;
+      }
+
+      case PacketType.S_KILL: {
+        store.addKillEvent(packet.kill);
+        break;
+      }
+
+      case PacketType.S_DEATH: {
+        store.setDead(true, packet.respawnTime);
+        if (store.localPlayer) {
+          store.updateLocalPlayer({ alive: false });
+        }
+        break;
+      }
+
+      case PacketType.S_SPAWN: {
+        store.setDead(false, 0);
+        if (store.localPlayer) {
+          store.updateLocalPlayer({
+            alive: true,
+            position: packet.position,
+            rotation: packet.rotation,
+            velocity: { x: 0, y: 0, z: 0 },
+          });
+        }
+        // Force reset input manager yaw/pitch to match spawn point rotation
+        inputManager.yaw = packet.rotation.yaw;
+        inputManager.pitch = packet.rotation.pitch;
+        break;
+      }
+
+      case PacketType.S_GAME_PHASE: {
+        store.setGamePhase(packet.phase, packet.timeRemaining, packet.winner);
+        break;
+      }
+
+      case PacketType.S_PONG: {
+        const latency = Math.round(Date.now() - packet.timestamp);
+        store.setPing(latency);
+        break;
+      }
+
+      case PacketType.S_ERROR: {
+        console.error(
+          "[NetworkClient] Server error packet received:",
+          packet.message,
+        );
+        break;
+      }
+
+      default:
+        console.warn(
+          "[NetworkClient] Unhandled server packet:",
+          (packet as any).type,
+        );
+    }
+  }
+}
+export const networkClient = NetworkClient.getInstance();
+</file>
+
+<file path="src/client/scenes/ArenaMap.tsx">
+// ========================================
+// Client-Side Map Scene Component
+// Renders static map boxes with premium cyberpunk styling and grid overlays
+// ========================================
+
+import React from 'react';
+import { ARENA_MAP } from '@shared/maps/arena.js';
+import type { AABB } from '@shared/types/index.js';
+import { Edges, Grid } from '@react-three/drei';
+
+function getBoxMaterialProps(index: number): { color: string; roughness: number; metalness: number } {
+  // Classification based on index in ARENA_MAP.boxes array
+  if (index === 0) {
+    // Floor
+    return { color: '#181b30', roughness: 0.8, metalness: 0.1 };
+  }
+  if (index >= 1 && index <= 4) {
+    // Perimeter Walls
+    return { color: '#222642', roughness: 0.7, metalness: 0.2 };
+  }
+  if (index === 5) {
+    // Central Tower
+    return { color: '#7c2a35', roughness: 0.6, metalness: 0.4 };
+  }
+  if (index >= 6 && index <= 9) {
+    // Low Cover Blocks
+    return { color: '#d98236', roughness: 0.5, metalness: 0.1 };
+  }
+  if (index >= 10 && index <= 11) {
+    // Large Cover Blocks
+    return { color: '#d95332', roughness: 0.5, metalness: 0.1 };
+  }
+  if (index === 12 || index === 15) {
+    // Platforms NE / SW
+    return { color: '#2a727a', roughness: 0.5, metalness: 0.3 };
+  }
+  if ((index >= 13 && index <= 14) || (index >= 16 && index <= 17)) {
+    // Steps NE / SW
+    return { color: '#3b526d', roughness: 0.6, metalness: 0.2 };
+  }
+  if (index >= 18 && index <= 19) {
+    // Jump Blocks
+    return { color: '#275ca3', roughness: 0.4, metalness: 0.4 };
+  }
+  if (index >= 20 && index <= 21) {
+    // Small Crates
+    return { color: '#7d532c', roughness: 0.9, metalness: 0.0 };
+  }
+  // Mid-height walls / Sight walls
+  return { color: '#475569', roughness: 0.7, metalness: 0.2 };
+}
+
+export const ArenaMap = React.memo(() => {
+  return (
+    <group>
+      {/* Dynamic Grid on floor */}
+      <Grid
+        position={[0, 0.01, 0]}
+        args={[10.5, 10.5]}
+        cellSize={2}
+        cellThickness={0.8}
+        cellColor="#343f66"
+        sectionSize={10}
+        sectionThickness={1.5}
+        sectionColor="#637bc2"
+        fadeDistance={40}
+        infiniteGrid
+      />
+
+      {/* Map Boxes */}
+      {ARENA_MAP.boxes.map((box: AABB, index: number) => {
+        // Calculate center position and scale dimensions
+        const sizeX = box.max.x - box.min.x;
+        const sizeY = box.max.y - box.min.y;
+        const sizeZ = box.max.z - box.min.z;
+
+        const posX = box.min.x + sizeX / 2;
+        const posY = box.min.y + sizeY / 2;
+        const posZ = box.min.z + sizeZ / 2;
+
+        const mat = getBoxMaterialProps(index);
+
+        // Don't render the bottom floor as a visible block if we have the Grid,
+        // but we need it for floor coloring. We will draw it.
+        return (
+          <mesh key={index} position={[posX, posY, posZ]}>
+            <boxGeometry args={[sizeX, sizeY, sizeZ]} />
+            <meshStandardMaterial
+              color={mat.color}
+              roughness={mat.roughness}
+              metalness={mat.metalness}
+              flatShading
+            />
+            {/* Outline wireframe edges for definition */}
+            <Edges
+              threshold={15}
+              color={index === 0 ? '#1f2438' : '#2d335c'}
+            />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+});
+
+ArenaMap.displayName = 'ArenaMap';
+</file>
+
+<file path="src/client/store/gameStore.ts">
+// ========================================
+// Client-Side Game State Store
+// Powered by Zustand
+// ========================================
+
+import { create } from "zustand";
+import type {
+  PlayerState,
+  GamePhase,
+  KillEvent,
+  MapData,
+  WeaponType,
+} from "@shared/types/index.js";
+
+interface GameStore {
+  // Connection
+  connected: boolean;
+  playerId: string | null;
+  roomId: string | null;
+  nickname: string;
+
+  // Local player
+  localPlayer: PlayerState | null;
+
+  // Remote players (rendered/interpolated)
+  remotePlayers: Map<string, PlayerState>;
+
+  // Game state
+  gamePhase: GamePhase;
+  timeRemaining: number;
+  killLimit: number;
+
+  // HUD
+  killFeed: (KillEvent & { id: string; fadeOut?: boolean })[];
+  hitMarker: boolean;
+  hitMarkerTimeout: NodeJS.Timeout | null;
+  damageNumbers: {
+    id: string;
+    damage: number;
+    headshot: boolean;
+    createdAt: number;
+  }[];
+
+  // Scoreboard
+  showScoreboard: boolean;
+
+  // Network metrics
+  ping: number;
+  fps: number;
+
+  // Map
+  mapData: MapData | null;
+
+  // UI state
+  inGame: boolean;
+  isDead: boolean;
+  respawnTime: number;
+
+  // Winner info
+  winner: { id: string; nickname: string; kills: number } | null;
+
+  // Actions
+  setConnected(connected: boolean): void;
+  setPlayerId(id: string): void;
+  setRoomId(id: string): void;
+  setNickname(name: string): void;
+  setLocalPlayer(player: PlayerState | null): void;
+  updateLocalPlayer(partial: Partial<PlayerState>): void;
+  setRemotePlayers(players: Map<string, PlayerState>): void;
+  addRemotePlayer(player: PlayerState): void;
+  removeRemotePlayer(id: string): void;
+  setGamePhase(phase: GamePhase, timeRemaining: number, winner?: any): void;
+  setMatchState(
+    phase: GamePhase,
+    timeRemaining: number,
+    killLimit: number,
+  ): void;
+  addKillEvent(event: KillEvent): void;
+  triggerHitMarker(): void;
+  setShowScoreboard(show: boolean): void;
+  setPing(ping: number): void;
+  setFps(fps: number): void;
+  addDamageNumber(damage: number, headshot: boolean): void;
+  setMapData(map: MapData): void;
+  setInGame(inGame: boolean): void;
+  setDead(isDead: boolean, respawnTime: number): void;
+  reset(): void;
+}
+
+export const useGameStore = create<GameStore>((set, get) => ({
+  connected: false,
+  playerId: null,
+  roomId: null,
+  nickname: "",
+  localPlayer: null,
+  remotePlayers: new Map(),
+  gamePhase: "waiting",
+  timeRemaining: 0,
+  killLimit: 30,
+  killFeed: [],
+  hitMarker: false,
+  hitMarkerTimeout: null,
+  damageNumbers: [],
+  showScoreboard: false,
+  ping: 0,
+  fps: 60,
+  mapData: null,
+  inGame: false,
+  isDead: false,
+  respawnTime: 0,
+  winner: null,
+
+  setConnected: (connected) => set({ connected }),
+  setPlayerId: (playerId) => set({ playerId }),
+  setRoomId: (roomId) => set({ roomId }),
+  setNickname: (nickname) => set({ nickname }),
+  setLocalPlayer: (localPlayer) => set({ localPlayer }),
+  updateLocalPlayer: (partial) =>
+    set((state) => ({
+      localPlayer: state.localPlayer
+        ? { ...state.localPlayer, ...partial }
+        : null,
+    })),
+  setRemotePlayers: (remotePlayers) => set({ remotePlayers }),
+  addRemotePlayer: (player) =>
+    set((state) => {
+      const newMap = new Map(state.remotePlayers);
+      newMap.set(player.id, player);
+      return { remotePlayers: newMap };
+    }),
+  removeRemotePlayer: (id) =>
+    set((state) => {
+      const newMap = new Map(state.remotePlayers);
+      newMap.delete(id);
+      return { remotePlayers: newMap };
+    }),
+  setGamePhase: (gamePhase, timeRemaining, winner) =>
+    set((state) => ({
+      gamePhase,
+      timeRemaining,
+      winner: winner !== undefined ? winner : state.winner,
+    })),
+  setMatchState: (gamePhase, timeRemaining, killLimit) =>
+    set({ gamePhase, timeRemaining, killLimit }),
+  addKillEvent: (event) =>
+    set((state) => {
+      const eventId = Math.random().toString(36).substring(2, 9);
+      const newEvent = { ...event, id: eventId };
+      const currentFeed = [...state.killFeed, newEvent];
+
+      // Limit to 5 entries
+      if (currentFeed.length > 5) {
+        currentFeed.shift();
+      }
+
+      // Schedule removal after 4 seconds
+      setTimeout(() => {
+        set((s) => {
+          // Set fadeout first
+          const updated = s.killFeed.map((item) =>
+            item.id === eventId ? { ...item, fadeOut: true } : item,
+          );
+          return { killFeed: updated };
+        });
+
+        // Actually remove after fadeout animation (500ms)
+        setTimeout(() => {
+          set((s) => ({
+            killFeed: s.killFeed.filter((item) => item.id !== eventId),
+          }));
+        }, 500);
+      }, 4000);
+
+      return { killFeed: currentFeed };
+    }),
+  triggerHitMarker: () => {
+    const currentTimeout = get().hitMarkerTimeout;
+    if (currentTimeout) {
+      clearTimeout(currentTimeout);
+    }
+
+    const timeout = setTimeout(() => {
+      set({ hitMarker: false, hitMarkerTimeout: null });
+    }, 200);
+
+    set({ hitMarker: true, hitMarkerTimeout: timeout });
+  },
+  setShowScoreboard: (showScoreboard) => set({ showScoreboard }),
+  setPing: (ping) => set({ ping }),
+  setFps: (fps) => set({ fps }),
+  addDamageNumber: (damage, headshot) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    const entry = { id, damage, headshot, createdAt: Date.now() };
+    set((state) => ({ damageNumbers: [...state.damageNumbers, entry] }));
+
+    setTimeout(() => {
+      set((state) => ({
+        damageNumbers: state.damageNumbers.filter((item) => item.id !== id),
+      }));
+    }, 1100);
+  },
+  setMapData: (mapData) => set({ mapData }),
+  setInGame: (inGame) => set({ inGame }),
+  setDead: (isDead, respawnTime) => set({ isDead, respawnTime }),
+  reset: () =>
+    set({
+      roomId: null,
+      localPlayer: null,
+      remotePlayers: new Map(),
+      gamePhase: "waiting",
+      timeRemaining: 0,
+      killFeed: [],
+      hitMarker: false,
+      damageNumbers: [],
+      winner: null,
+      inGame: false,
+      isDead: false,
+      respawnTime: 0,
+    }),
+}));
+</file>
+
+<file path="src/client/systems/InputManager.ts">
+// ========================================
+// Client-Side Input Manager
+// Accumulates mouse movements and key states
+// ========================================
+
+import type { InputState } from "@shared/types/index.js";
+
+export class InputManager {
+  private static instance: InputManager | null = null;
+
+  private keys = new Map<string, boolean>();
+  private mouseDeltaX = 0;
+  private mouseDeltaY = 0;
+  private sensitivity = 0.002;
+
+  // Cumulative orientation (radians)
+  public yaw = 0;
+  public pitch = 0;
+
+  private isLocked = false;
+  private canvasElement: HTMLCanvasElement | null = null;
+
+  private onKeyDownBind: (e: KeyboardEvent) => void;
+  private onKeyUpBind: (e: KeyboardEvent) => void;
+  private onMouseMoveBind: (e: MouseEvent) => void;
+  private onMouseDownBind: (e: MouseEvent) => void;
+  private onMouseUpBind: (e: MouseEvent) => void;
+  private onPointerLockChangeBind: () => void;
+
+  constructor() {
+    this.onKeyDownBind = (e) => this.onKeyDown(e);
+    this.onKeyUpBind = (e) => this.onKeyUp(e);
+    this.onMouseMoveBind = (e) => this.onMouseMove(e);
+    this.onMouseDownBind = (e) => this.onMouseDown(e);
+    this.onMouseUpBind = (e) => this.onMouseUp(e);
+    this.onPointerLockChangeBind = () => this.onPointerLockChange();
+
+    window.addEventListener("keydown", this.onKeyDownBind);
+    window.addEventListener("keyup", this.onKeyUpBind);
+    window.addEventListener("mousemove", this.onMouseMoveBind);
+    window.addEventListener("mousedown", this.onMouseDownBind);
+    window.addEventListener("mouseup", this.onMouseUpBind);
+    document.addEventListener(
+      "pointerlockchange",
+      this.onPointerLockChangeBind,
+    );
+  }
+
+  public static getInstance(): InputManager {
+    if (!InputManager.instance) {
+      InputManager.instance = new InputManager();
+    }
+    return InputManager.instance;
+  }
+
+  public setCanvas(canvas: HTMLCanvasElement): void {
+    this.canvasElement = canvas;
+  }
+
+  private onKeyDown(e: KeyboardEvent): void {
+    // Prevent default scrolling keys
+    if (
+      ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
+        e.code,
+      )
+    ) {
+      e.preventDefault();
+    }
+    this.keys.set(e.code, true);
+  }
+
+  private onKeyUp(e: KeyboardEvent): void {
+    this.keys.set(e.code, false);
+  }
+
+  private onMouseDown(e: MouseEvent): void {
+    if (e.button === 0) {
+      this.keys.set("MouseLeft", true);
+    }
+  }
+
+  private onMouseUp(e: MouseEvent): void {
+    if (e.button === 0) {
+      this.keys.set("MouseLeft", false);
+    }
+  }
+
+  private onMouseMove(e: MouseEvent): void {
+    if (!this.isLocked) return;
+
+    this.mouseDeltaX += e.movementX;
+    this.mouseDeltaY += e.movementY;
+  }
+
+  private onPointerLockChange(): void {
+    this.isLocked = document.pointerLockElement === this.canvasElement;
+    if (!this.isLocked) {
+      // Clear key inputs if player unlocks pointer (e.g. opens overlay)
+      this.keys.clear();
+      document.body.classList.remove("pointer-locked");
+    } else {
+      document.body.classList.add("pointer-locked");
+    }
+  }
+
+  public requestPointerLock(): void {
+    if (this.canvasElement) {
+      this.canvasElement.requestPointerLock();
+    }
+  }
+
+  public releasePointerLock(): void {
+    document.exitPointerLock();
+  }
+
+  public setSensitivity(value: number): void {
+    this.sensitivity = value;
+  }
+
+  public getSensitivity(): number {
+    return this.sensitivity;
+  }
+
+  public isPointerLocked(): boolean {
+    return this.isLocked;
+  }
+
+  /**
+   * Generates input state and updates cumulative orientation
+   */
+  public getInputState(sequence: number, deltaTime: number): InputState {
+    // Update orientation from accumulated mouse movement
+    this.yaw -= this.mouseDeltaX * this.sensitivity;
+    this.pitch -= this.mouseDeltaY * this.sensitivity;
+
+    // Reset mouse accumulators
+    this.mouseDeltaX = 0;
+    this.mouseDeltaY = 0;
+
+    // Clamp pitch to avoid flipping over (±89 degrees, ~1.553 radians)
+    const limit = (89 * Math.PI) / 180;
+    this.pitch = Math.max(-limit, Math.min(limit, this.pitch));
+
+    // Handle yaw wrap-around [0, 2pi]
+    const twoPi = Math.PI * 2;
+    this.yaw = ((this.yaw % twoPi) + twoPi) % twoPi;
+
+    return {
+      forward: this.keys.get("KeyW") || this.keys.get("ArrowUp") || false,
+      backward: this.keys.get("KeyS") || this.keys.get("ArrowDown") || false,
+      left: this.keys.get("KeyA") || this.keys.get("ArrowLeft") || false,
+      right: this.keys.get("KeyD") || this.keys.get("ArrowRight") || false,
+      jump: this.keys.get("Space") || false,
+      sprint:
+        this.keys.get("ShiftLeft") || this.keys.get("ShiftRight") || false,
+      crouch: this.keys.get("KeyC") || this.keys.get("ControlLeft") || false,
+      shoot: this.keys.get("MouseLeft") || false, // Click handles trigger pull, holds can update this
+      reload: this.keys.get("KeyR") || false,
+      yaw: this.yaw,
+      pitch: this.pitch,
+      sequence,
+      deltaTime,
+    };
+  }
+
+  /**
+   * Allows external systems (e.g. Shooting Recoil) to kick the screen orientation
+   */
+  public applyRecoil(kickPitch: number, kickYaw = 0): void {
+    this.pitch += kickPitch;
+    this.yaw += kickYaw;
+  }
+
+  public destroy(): void {
+    window.removeEventListener("keydown", this.onKeyDownBind);
+    window.removeEventListener("keyup", this.onKeyUpBind);
+    window.removeEventListener("mousemove", this.onMouseMoveBind);
+    window.removeEventListener("mousedown", this.onMouseDownBind);
+    window.removeEventListener("mouseup", this.onMouseUpBind);
+    document.removeEventListener(
+      "pointerlockchange",
+      this.onPointerLockChangeBind,
+    );
+    InputManager.instance = null;
+  }
+}
+export const inputManager = InputManager.getInstance();
+</file>
+
+<file path="src/client/systems/InterpolationSystem.ts">
+// ========================================
+// Client-Side Remote Player Interpolation
+// Buffers server updates and interpolates positions/rotations
+// ========================================
+
+import type { PlayerState, Vec3 } from '@shared/types/index.js';
+import { INTERPOLATION_DELAY } from '@shared/constants/index.js';
+
+interface Snapshot {
+  timestamp: number;
+  state: PlayerState;
+}
+
+export class InterpolationSystem {
+  private buffers = new Map<string, Snapshot[]>();
+  private readonly maxBufferSize = 10; // keep a bit more than 3 for safety during network jitter
+
+  public addSnapshot(playerId: string, state: PlayerState, timestamp: number): void {
+    if (!this.buffers.has(playerId)) {
+      this.buffers.set(playerId, []);
+    }
+
+    const buffer = this.buffers.get(playerId)!;
+    buffer.push({ timestamp, state });
+
+    // Sort by timestamp
+    buffer.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Limit buffer size
+    if (buffer.length > this.maxBufferSize) {
+      buffer.shift();
+    }
+  }
+
+  public removePlayer(playerId: string): void {
+    this.buffers.delete(playerId);
+  }
+
+  public getInterpolatedState(playerId: string, renderTime: number): PlayerState | null {
+    const buffer = this.buffers.get(playerId);
+    if (!buffer || buffer.length === 0) return null;
+
+    // Use latest if only one snapshot
+    if (buffer.length === 1) {
+      return buffer[0].state;
+    }
+
+    // If renderTime is older than our oldest snapshot, snap to oldest
+    if (renderTime < buffer[0].timestamp) {
+      return buffer[0].state;
+    }
+
+    // If renderTime is newer than our newest snapshot, snap to newest (or extrapolate)
+    if (renderTime > buffer[buffer.length - 1].timestamp) {
+      return buffer[buffer.length - 1].state;
+    }
+
+    // Find the two snapshots bracketing renderTime
+    let targetIndex = -1;
+    for (let i = 0; i < buffer.length - 1; i++) {
+      if (renderTime >= buffer[i].timestamp && renderTime <= buffer[i + 1].timestamp) {
+        targetIndex = i;
+        break;
+      }
+    }
+
+    if (targetIndex === -1) {
+      // Fallback
+      return buffer[buffer.length - 1].state;
+    }
+
+    const left = buffer[targetIndex];
+    const right = buffer[targetIndex + 1];
+
+    // Calculate interpolation factor
+    const total = right.timestamp - left.timestamp;
+    const factor = total > 0 ? (renderTime - left.timestamp) / total : 0;
+
+    // Deep clone state to modify
+    const interpolated = { ...right.state };
+
+    // Lerp position
+    interpolated.position = this.lerpVec3(left.state.position, right.state.position, factor);
+
+    // Lerp velocity
+    interpolated.velocity = this.lerpVec3(left.state.velocity, right.state.velocity, factor);
+
+    // Lerp rotation (yaw / pitch)
+    interpolated.rotation = {
+      yaw: this.lerpAngle(left.state.rotation.yaw, right.state.rotation.yaw, factor),
+      pitch: this.lerpAngle(left.state.rotation.pitch, right.state.rotation.pitch, factor),
+    };
+
+    // Keep discrete values from the right (newest) frame
+    interpolated.alive = right.state.alive;
+    interpolated.crouching = right.state.crouching;
+    interpolated.sprinting = right.state.sprinting;
+    interpolated.grounded = right.state.grounded;
+    interpolated.weapon = right.state.weapon;
+    interpolated.ammo = right.state.ammo;
+    interpolated.maxAmmo = right.state.maxAmmo;
+    interpolated.reloading = right.state.reloading;
+    interpolated.health = right.state.health;
+    interpolated.armor = right.state.armor;
+    interpolated.kills = right.state.kills;
+    interpolated.deaths = right.state.deaths;
+
+    return interpolated;
+  }
+
+  private lerpVec3(start: Vec3, end: Vec3, t: number): Vec3 {
+    return {
+      x: start.x + (end.x - start.x) * t,
+      y: start.y + (end.y - start.y) * t,
+      z: start.z + (end.z - start.z) * t,
+    };
+  }
+
+  private lerpAngle(start: number, end: number, t: number): number {
+    let diff = end - start;
+    // Wrap to [-PI, PI]
+    const pi = Math.PI;
+    const twoPi = pi * 2;
+    diff = ((diff + pi) % twoPi + twoPi) % twoPi - pi;
+    return start + diff * t;
+  }
+
+  public clear(): void {
+    this.buffers.clear();
+  }
+}
+export const interpolationSystem = new InterpolationSystem();
+</file>
+
+<file path="src/client/systems/PredictionSystem.ts">
+// ========================================
+// Client-Side Input Prediction & Reconciliation
+// Rewinds state to server snapshot and replays inputs
+// ========================================
+
+import type {
+  PlayerState,
+  InputState,
+  Vec3,
+  AABB,
+} from "@shared/types/index.js";
+import { processMovement } from "@shared/physics/movement.js";
+import { resolveCollisions } from "@shared/physics/collision.js";
+import {
+  MAX_PREDICTION_ERROR,
+  PREDICTION_CORRECTION_RATE,
+} from "@shared/constants/index.js";
+
+interface HistoryEntry {
+  input: InputState;
+  sequence: number;
+}
+
+export class PredictionSystem {
+  private inputHistory: HistoryEntry[] = [];
+  private readonly maxHistory = 128;
+
+  public addInput(input: InputState): void {
+    this.inputHistory.push({ input, sequence: input.sequence });
+
+    // Trim history
+    if (this.inputHistory.length > this.maxHistory) {
+      this.inputHistory.shift();
+    }
+  }
+
+  /**
+   * Reconciles local player state with server state
+   * Returns corrected position and velocity
+   */
+  public reconcile(
+    localState: PlayerState,
+    serverState: PlayerState,
+    lastProcessedSequence: number,
+    mapBoxes: AABB[],
+  ): { position: Vec3; velocity: Vec3; grounded: boolean } {
+    // 1. Find the server acknowledged input in history
+    const ackIndex = this.inputHistory.findIndex(
+      (entry) => entry.sequence === lastProcessedSequence,
+    );
+
+    if (ackIndex === -1) {
+      // Server sequence not found in history, possibly too old or dropped.
+      // Force snap to server state as a fallback
+      return {
+        position: { ...serverState.position },
+        velocity: { ...serverState.velocity },
+        grounded: serverState.grounded,
+      };
+    }
+
+    // 2. Remove all inputs up to and including the acknowledged sequence
+    this.inputHistory.splice(0, ackIndex + 1);
+
+    // 3. Start simulation from server authoritative state
+    let tempPos = { ...serverState.position };
+    let tempVel = { ...serverState.velocity };
+    let tempGrounded = serverState.grounded;
+
+    // 4. Replay all remaining inputs in history (unacknowledged inputs)
+    let tempSlideTime = serverState.slideTime || 0;
+
+    for (const entry of this.inputHistory) {
+      const dt = entry.input.deltaTime;
+
+      const moveResult = processMovement(
+        tempPos,
+        tempVel,
+        tempGrounded,
+        tempSlideTime,
+        entry.input,
+        dt,
+      );
+      const collResult = resolveCollisions(
+        moveResult.position,
+        moveResult.velocity,
+        moveResult.crouching,
+        mapBoxes,
+      );
+
+      tempPos = collResult.position;
+      tempVel = collResult.velocity;
+      tempGrounded = collResult.grounded;
+      tempSlideTime = moveResult.slideTime;
+    }
+
+    // 5. Compare predicted position with actual local position
+    const errorX = tempPos.x - localState.position.x;
+    const errorY = tempPos.y - localState.position.y;
+    const errorZ = tempPos.z - localState.position.z;
+    const errorSq = errorX * errorX + errorY * errorY + errorZ * errorZ;
+
+    // If the error is tiny, ignore it to prevent micro-stutters and keep movement perfectly smooth
+    if (errorSq < 0.002) {
+      return {
+        position: { ...localState.position },
+        velocity: tempVel,
+        grounded: tempGrounded,
+      };
+    }
+
+    let finalPos = { ...localState.position };
+
+    if (errorSq > MAX_PREDICTION_ERROR * MAX_PREDICTION_ERROR) {
+      // Prediction error is too large, snap to corrected position immediately
+      console.warn(
+        `[PredictionSystem] Large prediction drift. Snapping. Error: ${Math.sqrt(errorSq).toFixed(2)}m`,
+      );
+      finalPos = tempPos;
+    } else {
+      // Smoothly blend local position towards predicted position
+      finalPos.x =
+        localState.position.x +
+        (tempPos.x - localState.position.x) * PREDICTION_CORRECTION_RATE;
+      finalPos.y =
+        localState.position.y +
+        (tempPos.y - localState.position.y) * PREDICTION_CORRECTION_RATE;
+      finalPos.z =
+        localState.position.z +
+        (tempPos.z - localState.position.z) * PREDICTION_CORRECTION_RATE;
+    }
+
+    return {
+      position: finalPos,
+      velocity: tempVel, // keep the replayed velocity
+      grounded: tempGrounded,
+    };
+  }
+
+  public clear(): void {
+    this.inputHistory = [];
+  }
+}
+export const predictionSystem = new PredictionSystem();
+</file>
+
+<file path="src/client/systems/ShootingSystem.ts">
+// ========================================
+// Client-Side Shooting Mechanics
+// Triggers shots, calculates fire-rates, and applies camera recoil kick
+// ========================================
+
+import type { PlayerState, Vec3 } from '@shared/types/index.js';
+import type { WeaponConfig } from '@shared/constants/index.js';
+import { inputManager } from './InputManager.js';
+import * as THREE from 'three';
+
+export class ShootingSystem {
+  private lastFireTime = 0;
+
+  /**
+   * Tries to execute a shot.
+   * Returns origin and direction if successful, or null if cannot shoot.
+   */
+  public tryShoot(
+    camera: THREE.Camera,
+    localPlayer: PlayerState,
+    weaponConfig: WeaponConfig,
+    now: number,
+  ): { origin: Vec3; direction: Vec3 } | null {
+    if (!localPlayer.alive) return null;
+    if (localPlayer.reloading) return null;
+    if (localPlayer.ammo <= 0) return null;
+
+    const fireInterval = 1000 / weaponConfig.fireRate;
+    if (now - this.lastFireTime < fireInterval) {
+      return null;
+    }
+
+    this.lastFireTime = now;
+
+    // Get camera ray
+    const origin = new THREE.Vector3();
+    camera.getWorldPosition(origin);
+
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+
+    // Apply weapon spread
+    const spreadDirection = this.applySpread(direction, weaponConfig.spread);
+
+    // Apply visual recoil to the input manager orientation
+    const recoilPitchKick = weaponConfig.recoil;
+    const recoilYawKick = (Math.random() - 0.5) * weaponConfig.recoilHorizontal * 2;
+
+    inputManager.applyRecoil(recoilPitchKick, recoilYawKick);
+
+    return {
+      origin: { x: origin.x, y: origin.y, z: origin.z },
+      direction: { x: spreadDirection.x, y: spreadDirection.y, z: spreadDirection.z },
+    };
+  }
+
+  private applySpread(direction: THREE.Vector3, spread: number): THREE.Vector3 {
+    if (spread <= 0.0001) return direction.clone();
+
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.random() * spread;
+
+    // Create perpendicular coordinate frame
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3(0, 1, 0);
+
+    if (Math.abs(direction.y) > 0.9) {
+      up.set(1, 0, 0);
+    }
+
+    right.crossVectors(direction, up).normalize();
+    const actualUp = new THREE.Vector3().crossVectors(right, direction).normalize();
+
+    const offset = new THREE.Vector3()
+      .addScaledVector(right, Math.cos(angle) * radius)
+      .addScaledVector(actualUp, Math.sin(angle) * radius);
+
+    return direction.clone().add(offset).normalize();
+  }
+}
+export const shootingSystem = new ShootingSystem();
+</file>
+
+<file path="src/client/ui/HUD.tsx">
+// ========================================
+// Client-Side Heads-Up Display (HUD)
+// Render overlays for crosshair, health, ammo, killfeed, ping, and death screens
+// ========================================
+
+import React, { useEffect, useState } from "react";
+import { useGameStore } from "../store/gameStore.js";
+import { WEAPONS } from "@shared/constants/index.js";
+
+export function HUD() {
+  const localPlayer = useGameStore((state) => state.localPlayer);
+  const isDead = useGameStore((state) => state.isDead);
+  const killFeed = useGameStore((state) => state.killFeed);
+  const hitMarker = useGameStore((state) => state.hitMarker);
+  const damageNumbers = useGameStore((state) => state.damageNumbers);
+  const ping = useGameStore((state) => state.ping);
+  const fps = useGameStore((state) => state.fps);
+  const timeRemaining = useGameStore((state) => state.timeRemaining);
+  const killLimit = useGameStore((state) => state.killLimit);
+  const gamePhase = useGameStore((state) => state.gamePhase);
+  const winner = useGameStore((state) => state.winner);
+
+  // Local state countdown for death respawn
+  const [respawnCountdown, setRespawnCountdown] = useState(3);
+  const [restartCountdown, setRestartCountdown] = useState(5);
+
+  useEffect(() => {
+    if (isDead) {
+      setRespawnCountdown(3);
+      const timer = setInterval(() => {
+        setRespawnCountdown((c) => Math.max(c - 1, 0));
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [isDead]);
+
+  useEffect(() => {
+    if (gamePhase === "ended") {
+      setRestartCountdown(5);
+      const timer = setInterval(() => {
+        setRestartCountdown((c) => Math.max(c - 1, 0));
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+    return undefined;
+  }, [gamePhase]);
+
+  if (!localPlayer) return null;
+
+  // Calculate speed for dynamic crosshair expansion
+  const speed = Math.sqrt(
+    localPlayer.velocity.x * localPlayer.velocity.x +
+      localPlayer.velocity.z * localPlayer.velocity.z,
+  );
+  // Base gap: 6px, expands by speed
+  const crosshairGap = 6 + speed * 1.5;
+
+  // Health color styling
+  const hp = localPlayer.health;
+  let hpColor = "bg-emerald-500";
+  let hpTextColor = "text-emerald-400";
+  if (hp <= 30) {
+    hpColor = "bg-rose-500 animate-pulse";
+    hpTextColor = "text-rose-500 font-extrabold";
+  } else if (hp <= 60) {
+    hpColor = "bg-amber-500";
+    hpTextColor = "text-amber-400";
+  }
+
+  // Ammo color styling
+  const ammoRatio = localPlayer.ammo / localPlayer.maxAmmo;
+  const isLowAmmo = ammoRatio <= 0.25;
+
+  // Weapon display name
+  const weaponConfig = WEAPONS[localPlayer.weapon];
+  const weaponName = weaponConfig ? weaponConfig.name : "Unknown";
+  const score = localPlayer.score;
+  const now = Date.now();
+  const protectionRemaining = Math.max(
+    localPlayer.spawnProtectionUntil - now,
+    0,
+  );
+
+  const displayTime = Math.max(timeRemaining, 0);
+  const timerMinutes = Math.floor(displayTime / 60000);
+  const timerSeconds = Math.floor((displayTime % 60000) / 1000)
+    .toString()
+    .padStart(2, "0");
+
+  const phaseLabel =
+    gamePhase === "waiting"
+      ? "Waiting for players"
+      : gamePhase === "ended"
+        ? "Match Complete"
+        : "Match Live";
+
+  return (
+    <div className="absolute inset-0 z-40 pointer-events-none font-game select-none">
+      <div className="absolute inset-x-0 top-4 flex items-center justify-center gap-3 pointer-events-none">
+        <div className="px-4 py-2 rounded-2xl bg-slate-950/75 border border-slate-800/50 text-xs uppercase tracking-[0.2em] text-slate-300 shadow-lg shadow-black/10">
+          {phaseLabel}
+        </div>
+        <div className="px-4 py-2 rounded-2xl bg-slate-950/90 border border-slate-800/60 text-sm font-bold tracking-wider text-white shadow-lg shadow-black/15">
+          {timerMinutes}:{timerSeconds}
+        </div>
+        <div className="px-4 py-2 rounded-2xl bg-slate-950/75 border border-slate-800/50 text-xs uppercase tracking-[0.2em] text-slate-300 shadow-lg shadow-black/10">
+          Score: <span className="text-amber-400">{score}</span>
+        </div>
+      </div>
+
+      {protectionRemaining > 0 && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-slate-950/75 border border-slate-700/60 text-[11px] uppercase tracking-[0.2em] text-sky-300 shadow-lg shadow-black/20 pointer-events-none">
+          Spawn protection: {(protectionRemaining / 1000).toFixed(1)}s
+        </div>
+      )}
+
+      {/* ── Dynamic Crosshair & Hitmarker ────────────────── */}
+      {!isDead && gamePhase !== "ended" && (
+        <>
+          <div
+            className="crosshair-container"
+            style={
+              { "--spread-gap": `${crosshairGap}px` } as React.CSSProperties
+            }
+          >
+            <div className="crosshair-center" />
+            <div className="crosshair-line crosshair-top" />
+            <div className="crosshair-line crosshair-bottom" />
+            <div className="crosshair-line crosshair-left" />
+            <div className="crosshair-line crosshair-right" />
+
+            {/* Hit Marker Flash */}
+            {hitMarker && (
+              <div className="hitmarker">
+                <div className="hitmarker-line-tl-br" />
+                <div className="hitmarker-line-tr-bl" />
+              </div>
+            )}
+          </div>
+
+          {/* Damage Numbers */}
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+            <div className="relative w-full h-full">
+              {damageNumbers.map((num) => {
+                const age = (Date.now() - num.createdAt) / 1000;
+                if (age > 1) return null;
+                const opacity = 1 - age;
+                const yOffset = -age * 40;
+                return (
+                  <div
+                    key={num.id}
+                    className={`absolute left-1/2 top-1/2 -translate-x-1/2 text-2xl font-black tracking-wider ${num.headshot ? "text-amber-300" : "text-white"}`}
+                    style={{
+                      opacity,
+                      transform: `translate(-50%, calc(-50% + ${yOffset}px))`,
+                    }}
+                  >
+                    {num.headshot ? `HEADSHOT ${num.damage}` : `-${num.damage}`}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
+      {hp <= 35 && !isDead && gamePhase !== "ended" && (
+        <div className="absolute inset-0 bg-rose-500/15 pointer-events-none" />
+      )}
+
+      {/* ── Top-Left: Network Diagnostics ───────────────── */}
+      <div className="absolute top-4 left-4 p-3 rounded-xl bg-slate-950/70 border border-slate-800/40 text-[10px] font-mono text-slate-400 tracking-wider">
+        <div className="flex items-center gap-3">
+          <span>
+            FPS: <strong className="text-slate-100">{fps}</strong>
+          </span>
+          <span>
+            PING:{" "}
+            <strong
+              className={ping > 100 ? "text-rose-400" : "text-emerald-400"}
+            >
+              {ping}ms
+            </strong>
+          </span>
+        </div>
+      </div>
+
+      {/* ── Top-Right: Kill Feed ────────────────────────── */}
+      <div className="absolute top-4 right-4 flex flex-col gap-2 w-64 items-end">
+        {killFeed.map((item) => (
+          <div
+            key={item.id}
+            className={`kill-feed-item flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-950/80 border border-slate-800 text-xs font-bold shadow ${
+              item.fadeOut ? "fade-out" : ""
+            }`}
+          >
+            <span className="text-slate-300">{item.killerName}</span>
+            <span className="text-slate-500 font-normal">
+              {item.headshot ? (
+                <span className="text-amber-400 font-extrabold text-[10px] uppercase px-1 bg-amber-500/10 rounded border border-amber-500/20">
+                  Headshot
+                </span>
+              ) : (
+                "killed"
+              )}
+            </span>
+            <span className="text-rose-400">{item.victimName}</span>
+            <span className="text-[10px] text-slate-500 font-mono">
+              ({WEAPONS[item.weapon]?.name || item.weapon})
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Bottom-Left: Health & Armor ──────────────────── */}
+      <div className="absolute bottom-6 left-6 flex flex-col gap-1 w-64 p-4 rounded-2xl bg-slate-950/75 backdrop-blur-md border border-slate-800/50 shadow-2xl">
+        <div className="flex justify-between items-baseline mb-1">
+          <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">
+            Health
+          </span>
+          <span className={`text-3xl font-black font-mono ${hpTextColor}`}>
+            {hp}
+          </span>
+        </div>
+        <div className="w-full h-3 bg-slate-900 border border-slate-800 rounded-full overflow-hidden">
+          <div
+            className={`h-full ${hpColor} transition-all duration-100`}
+            style={{ width: `${hp}%` }}
+          />
+        </div>
+      </div>
+
+      {/* ── Bottom-Right: Ammo & Weapon ──────────────────── */}
+      <div className="absolute bottom-6 right-6 flex flex-col items-end p-4 rounded-2xl bg-slate-950/75 backdrop-blur-md border border-slate-800/50 shadow-2xl min-w-44 text-right">
+        <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mb-0.5">
+          Weapon
+        </span>
+        <span className="text-lg font-black text-white tracking-wide mb-1 uppercase">
+          {weaponName}
+        </span>
+
+        {localPlayer.reloading ? (
+          <span className="text-xl font-black text-amber-500 animate-pulse tracking-widest uppercase">
+            Reloading...
+          </span>
+        ) : (
+          <div className="flex items-baseline gap-1">
+            <span
+              className={`text-3xl font-black font-mono ${isLowAmmo ? "text-rose-500 animate-pulse" : "text-slate-100"}`}
+            >
+              {localPlayer.ammo}
+            </span>
+            <span className="text-slate-600 text-sm font-bold font-mono">
+              / {localPlayer.maxAmmo}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Death Overlay Screen ─────────────────────────── */}
+      {isDead && (
+        <div className="absolute inset-0 bg-rose-950/45 backdrop-blur-sm flex flex-col items-center justify-center text-center">
+          <h1 className="text-6xl font-black text-rose-500 tracking-widest uppercase drop-shadow-md animate-bounce">
+            YOU DIED
+          </h1>
+          <p className="text-sm text-slate-400 mt-2 font-bold uppercase tracking-wider">
+            Respawn in{" "}
+            <span className="text-white font-mono text-lg font-black">
+              {respawnCountdown}
+            </span>
+            s
+          </p>
+        </div>
+      )}
+
+      {/* ── Game Ended / Restarting Screen ────────────────── */}
+      {gamePhase === "ended" && winner && (
+        <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-center text-center">
+          <span className="text-amber-500 text-sm font-extrabold tracking-widest uppercase mb-1">
+            Match Complete
+          </span>
+          <h1 className="text-5xl font-black text-white tracking-wider uppercase mb-2">
+            {winner.nickname} Wins!
+          </h1>
+          <p className="text-slate-400 font-bold uppercase text-xs tracking-wider mb-6">
+            With{" "}
+            <strong className="text-amber-400 font-mono">{winner.kills}</strong>{" "}
+            Kills
+          </p>
+
+          <div className="flex items-center gap-3">
+            <svg
+              className="animate-spin h-5 w-5 text-amber-500"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
+            </svg>
+            <span className="text-slate-400 text-xs font-bold uppercase tracking-widest">
+              Restarting Match...
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="src/client/ui/JoinScreen.tsx">
+// ========================================
+// Client-Side Join / Lobby Component
+// Styled lobby with premium animations, inputs, and socket connections
+// ========================================
+
+import React, { useState } from "react";
+import { useGameStore } from "../store/gameStore.js";
+import { networkClient } from "../network/NetworkClient.js";
+import { PacketType } from "@shared/protocol/index.js";
+import { WEAPONS } from "@shared/constants/index.js";
+import { inputManager } from "../systems/InputManager.js";
+
+export function JoinScreen() {
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [connecting, setConnecting] = useState(false);
+
+  const setNickname = useGameStore((state) => state.setNickname);
+
+  const [selectedWeapon, setSelectedWeapon] = useState("assault_rifle");
+  const [sensitivity, setSensitivity] = useState(inputManager.getSensitivity());
+  const [volume, setVolume] = useState(0.8);
+  const [graphicsQuality, setGraphicsQuality] = useState("high");
+
+  const handlePlay = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError("Nickname is required!");
+      return;
+    }
+    if (trimmed.length > 12) {
+      setError("Nickname must be 12 characters or less");
+      return;
+    }
+
+    setError("");
+    setConnecting(true);
+    setNickname(trimmed);
+    inputManager.setSensitivity(sensitivity);
+
+    // Dynamic websocket resolution based on environment or host
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const host = window.location.hostname;
+    // Default to port 3001 in dev, or co-hosted host if production
+    const defaultWsUrl = `${wsProtocol}//${host}:3001`;
+    const wsUrl = (import.meta.env.VITE_WS_URL as string) || defaultWsUrl;
+
+    try {
+      // Connect client
+      networkClient.connect(wsUrl);
+
+      // Wait a moment for connection open, then send join packet.
+      // In a real system, NetworkClient handlePacket processes S_JOIN_ACK.
+      // We will listen for socket status or send JOIN packet upon open.
+      const checkConnection = setInterval(() => {
+        if (networkClient.isConnected()) {
+          clearInterval(checkConnection);
+          networkClient.send({
+            type: PacketType.C_JOIN,
+            nickname: trimmed,
+            selectedWeapon,
+          });
+        }
+      }, 100);
+
+      // Timeout after 5 seconds
+      setTimeout(() => {
+        clearInterval(checkConnection);
+        if (!networkClient.isConnected()) {
+          networkClient.disconnect();
+          setConnecting(false);
+          setError("Failed to connect to game server. Is it running?");
+        }
+      }, 5000);
+    } catch (err) {
+      console.error(err);
+      setConnecting(false);
+      setError("Socket connection failed");
+    }
+  };
+
+  return (
+    <div className="relative w-screen h-screen flex items-center justify-center bg-slate-950 overflow-hidden select-none">
+      {/* Premium Cyberpunk grid backdrop */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(30,41,59,0.3)_0%,rgba(2,6,23,0.9)_80%)] z-0" />
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.01)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:32px_32px] opacity-20 z-0" />
+
+      <div className="w-full max-w-md p-8 rounded-2xl glass-panel relative z-10 border border-slate-800 shadow-2xl flex flex-col items-center">
+        {/* Logo / Game Title */}
+        <div className="text-center mb-8">
+          <h1 className="text-5xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-amber-500 via-orange-500 to-rose-600 drop-shadow-md">
+            ARENA FPS
+          </h1>
+          <p className="text-xs text-slate-500 uppercase tracking-widest mt-2 font-semibold">
+            Browser-Based 3D Shooter MVP
+          </p>
+        </div>
+
+        {/* Play Form */}
+        <form onSubmit={handlePlay} className="w-full flex flex-col gap-5">
+          <div>
+            <label
+              htmlFor="nickname"
+              className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2"
+            >
+              Select Nickname
+            </label>
+            <input
+              id="nickname"
+              type="text"
+              placeholder="Nickname"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={connecting}
+              autoFocus
+              className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all font-semibold"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="weapon"
+              className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2"
+            >
+              Starting Weapon
+            </label>
+            <select
+              id="weapon"
+              value={selectedWeapon}
+              onChange={(e) => setSelectedWeapon(e.target.value)}
+              disabled={connecting}
+              className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all font-semibold"
+            >
+              {Object.entries(WEAPONS).map(([key, weapon]) => (
+                <option key={key} value={key}>
+                  {weapon.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label
+              htmlFor="sensitivity"
+              className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2"
+            >
+              Mouse Sensitivity
+            </label>
+            <input
+              id="sensitivity"
+              type="range"
+              min="0.001"
+              max="0.01"
+              step="0.0005"
+              value={sensitivity}
+              onChange={(e) => setSensitivity(Number(e.target.value))}
+              disabled={connecting}
+              className="w-full accent-amber-500"
+            />
+            <div className="text-xs text-slate-400 mt-1">
+              {(sensitivity * 1000).toFixed(1)} sensitivity
+            </div>
+          </div>
+          <div>
+            <label
+              htmlFor="volume"
+              className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2"
+            >
+              Volume
+            </label>
+            <input
+              id="volume"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={volume}
+              onChange={(e) => setVolume(Number(e.target.value))}
+              disabled={connecting}
+              className="w-full accent-amber-500"
+            />
+            <div className="text-xs text-slate-400 mt-1">
+              {Math.round(volume * 100)}%
+            </div>
+          </div>
+          <div>
+            <label
+              htmlFor="graphics"
+              className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2"
+            >
+              Graphics Quality
+            </label>
+            <select
+              id="graphics"
+              value={graphicsQuality}
+              onChange={(e) => setGraphicsQuality(e.target.value)}
+              disabled={connecting}
+              className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all font-semibold"
+            >
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+
+          {error && (
+            <div className="px-4 py-2 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-400 font-semibold uppercase tracking-wide">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={connecting}
+            className="w-full py-4 rounded-xl font-black text-slate-950 uppercase tracking-widest bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 active:scale-98 transition-all disabled:opacity-50 cursor-pointer shadow-lg shadow-orange-500/20"
+          >
+            {connecting ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg
+                  className="animate-spin h-5 w-5 text-slate-950"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                Connecting...
+              </span>
+            ) : (
+              "Enter Arena"
+            )}
+          </button>
+        </form>
+
+        {/* Controls Tutorial */}
+        <div className="mt-8 pt-6 border-t border-slate-800/80 w-full">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">
+            Controls
+          </h3>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-slate-500">
+            <div className="flex justify-between">
+              <span className="font-medium">Move:</span>
+              <span className="font-bold text-slate-400">WASD</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-medium">Look:</span>
+              <span className="font-bold text-slate-400">Mouse</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-medium">Shoot:</span>
+              <span className="font-bold text-slate-400">Left Click</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-medium">Jump:</span>
+              <span className="font-bold text-slate-400">Space</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-medium">Sprint:</span>
+              <span className="font-bold text-slate-400">Shift</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-medium">Crouch:</span>
+              <span className="font-bold text-slate-400">C</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-medium">Reload:</span>
+              <span className="font-bold text-slate-400">R</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-medium">Scores:</span>
+              <span className="font-bold text-slate-400">Hold Tab</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="src/client/App.tsx">
+// ========================================
+// Client App Root Component
+// Switch between lobby (JoinScreen) and Arena (GameCanvas + HUD overlays)
+// ========================================
+
+import React from 'react';
+import { useGameStore } from './store/gameStore.js';
+import { JoinScreen } from './ui/JoinScreen.js';
+import { GameCanvas } from './components/GameCanvas.js';
+import { HUD } from './ui/HUD.js';
+import { Scoreboard } from './components/Scoreboard.js';
+
+export function App() {
+  const inGame = useGameStore(state => state.inGame);
+
+  return (
+    <div className="relative w-screen h-screen bg-slate-950 overflow-hidden font-game text-slate-100 select-none">
+      {!inGame ? (
+        <JoinScreen />
+      ) : (
+        <>
+          {/* Main 3D Canvas */}
+          <GameCanvas />
+
+          {/* HUD Status Bar & Overlays */}
+          <HUD />
+
+          {/* Tab Scoreboard */}
+          <Scoreboard />
+        </>
+      )}
+    </div>
+  );
+}
+export default App;
+</file>
+
+<file path="src/client/index.css">
+@import "tailwindcss";
+
+/* Custom theme tokens for Tailwind v4 */
+@theme {
+  --color-hud-bg: oklch(0.15 0.02 260 / 0.75);
+  --color-hud-text: oklch(0.95 0 0);
+  --color-hud-accent: oklch(0.7 0.2 150);
+  --color-hud-danger: oklch(0.65 0.25 25);
+  --color-hud-warning: oklch(0.75 0.15 85);
+  --font-game: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--font-game);
+  background-color: #0b0d19;
+  color: #f3f4f6;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Hide standard cursor when pointer lock is engaged */
+.pointer-locked canvas {
+  cursor: none;
+}
+
+/* Glassmorphism panel styling */
+.glass-panel {
+  background: rgba(15, 20, 35, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+/* Animations for Kill Feed */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.kill-feed-item {
+  animation: slide-in-right 0.25s ease-out forwards;
+}
+
+.kill-feed-item.fade-out {
+  animation: fade-out 0.5s ease-out forwards;
+}
+
+/* Dynamic crosshair styling */
+.crosshair-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100px;
+  height: 100px;
+}
+
+.crosshair-line {
+  position: absolute;
+  background-color: rgba(255, 255, 255, 0.85);
+  border-radius: 1px;
+}
+
+.crosshair-center {
+  width: 4px;
+  height: 4px;
+  background-color: rgba(255, 255, 255, 0.95);
+  border-radius: 50%;
+}
+
+.crosshair-top {
+  width: 2px;
+  height: 10px;
+  bottom: calc(50% + var(--spread-gap, 6px));
+}
+
+.crosshair-bottom {
+  width: 2px;
+  height: 10px;
+  top: calc(50% + var(--spread-gap, 6px));
+}
+
+.crosshair-left {
+  width: 10px;
+  height: 2px;
+  right: calc(50% + var(--spread-gap, 6px));
+}
+
+.crosshair-right {
+  width: 10px;
+  height: 2px;
+  left: calc(50% + var(--spread-gap, 6px));
+}
+
+/* Hit marker flash animation */
+@keyframes hitmarker-fade {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+}
+
+.hitmarker {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: hitmarker-fade 0.2s ease-out forwards;
+}
+
+.hitmarker::before,
+.hitmarker::after {
+  content: '';
+  position: absolute;
+  background-color: #ef4444;
+}
+
+.hitmarker-line-tl-br {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+.hitmarker-line-tl-br::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; width: 8px; height: 2px;
+  transform: rotate(45deg); transform-origin: top left;
+}
+
+.hitmarker-line-tl-br::after {
+  content: '';
+  position: absolute;
+  bottom: 0; right: 0; width: 8px; height: 2px;
+  transform: rotate(45deg); transform-origin: bottom right;
+}
+
+.hitmarker-line-tr-bl {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+.hitmarker-line-tr-bl::before {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; width: 8px; height: 2px;
+  transform: rotate(-45deg); transform-origin: top right;
+}
+
+.hitmarker-line-tr-bl::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; width: 8px; height: 2px;
+  transform: rotate(-45deg); transform-origin: bottom left;
+}
+</file>
+
+<file path="src/client/main.tsx">
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { App } from './App.js';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+</file>
+
+<file path="src/server/game/CombatSystem.ts">
+// ========================================
+// Combat System — Server-Side Hit Validation
+// Stateless utility functions for shot verification
+// ========================================
+
+import type { Vec3, AABB, PlayerState } from '../../shared/types/index.js';
+import type { WeaponConfig } from '../../shared/constants/index.js';
+import { raycastPlayer, raycastMap } from '../../shared/physics/collision.js';
+import { vec3Distance, vec3Normalize } from '../../shared/physics/movement.js';
+import { HEADSHOT_MULTIPLIER, PLAYER_EYE_OFFSET, PLAYER_HEIGHT } from '../../shared/constants/index.js';
+import type { PlayerEntity } from './PlayerEntity.js';
+
+export interface HitResult {
+  targetId: string;
+  damage: number;
+  headshot: boolean;
+  hitPosition: Vec3;
+}
+
+/**
+ * Calculate damage with distance falloff.
+ */
+export function calculateDamage(
+  baseDamage: number,
+  distance: number,
+  weaponConfig: WeaponConfig,
+  headshot: boolean,
+): number {
+  let damage = baseDamage;
+
+  // Distance falloff
+  if (distance > weaponConfig.falloffStart) {
+    if (distance >= weaponConfig.falloffEnd) {
+      damage = weaponConfig.minDamage;
+    } else {
+      const t = (distance - weaponConfig.falloffStart) / (weaponConfig.falloffEnd - weaponConfig.falloffStart);
+      damage = baseDamage + (weaponConfig.minDamage - baseDamage) * t;
+    }
+  }
+
+  // Headshot multiplier
+  if (headshot) {
+    damage *= HEADSHOT_MULTIPLIER;
+  }
+
+  return Math.round(damage);
+}
+
+/**
+ * Generate a spread direction from a base direction.
+ */
+function applySpread(direction: Vec3, spread: number): Vec3 {
+  const angle = Math.random() * Math.PI * 2;
+  const radius = Math.random() * spread;
+
+  // Create perpendicular vectors
+  let upX = 0, upY = 1, upZ = 0;
+  if (Math.abs(direction.y) > 0.9) {
+    upX = 1; upY = 0; upZ = 0;
+  }
+
+  // Cross product: direction × up = right
+  const rightX = direction.y * upZ - direction.z * upY;
+  const rightY = direction.z * upX - direction.x * upZ;
+  const rightZ = direction.x * upY - direction.y * upX;
+  const rLen = Math.sqrt(rightX * rightX + rightY * rightY + rightZ * rightZ);
+
+  // Cross product: right × direction = actualUp
+  const aUpX = (rightY / rLen) * direction.z - (rightZ / rLen) * direction.y;
+  const aUpY = (rightZ / rLen) * direction.x - (rightX / rLen) * direction.z;
+  const aUpZ = (rightX / rLen) * direction.y - (rightY / rLen) * direction.x;
+
+  const offsetX = (rightX / rLen) * Math.cos(angle) * radius + aUpX * Math.sin(angle) * radius;
+  const offsetY = (rightY / rLen) * Math.cos(angle) * radius + aUpY * Math.sin(angle) * radius;
+  const offsetZ = (rightZ / rLen) * Math.cos(angle) * radius + aUpZ * Math.sin(angle) * radius;
+
+  return vec3Normalize({
+    x: direction.x + offsetX,
+    y: direction.y + offsetY,
+    z: direction.z + offsetZ,
+  });
+}
+
+/**
+ * Validate a shot from shooter against all players.
+ * Server-authoritative hit detection.
+ */
+export function validateShot(
+  origin: Vec3,
+  direction: Vec3,
+  shooterId: string,
+  players: Map<string, PlayerEntity>,
+  mapBoxes: AABB[],
+  weaponConfig: WeaponConfig,
+): HitResult[] {
+  const shooter = players.get(shooterId);
+  if (!shooter) return [];
+
+  // Anti-cheat: verify origin is near shooter's actual eye position
+  const eyePos: Vec3 = {
+    x: shooter.state.position.x,
+    y: shooter.state.position.y + (PLAYER_HEIGHT / 2) + PLAYER_EYE_OFFSET,
+    z: shooter.state.position.z,
+  };
+
+  const originDist = vec3Distance(origin, eyePos);
+  if (originDist > 3.0) {
+    // Origin too far from server-known position — reject
+    return [];
+  }
+
+  // Use server-authoritative origin
+  const authOrigin = eyePos;
+  const hits: HitResult[] = [];
+
+  // Determine number of rays (pellets for shotgun)
+  const pelletCount = weaponConfig.pellets || 1;
+
+  for (let p = 0; p < pelletCount; p++) {
+    // Apply spread
+    const spreadDir = pelletCount > 1 || weaponConfig.spread > 0
+      ? applySpread(direction, weaponConfig.spread)
+      : direction;
+
+    // Check wall hit distance first
+    const wallHit = raycastMap(authOrigin, spreadDir, mapBoxes, weaponConfig.range);
+    const maxDist = wallHit ? wallHit.distance : weaponConfig.range;
+
+    // Check all alive players
+    let closestHit: { targetId: string; distance: number; point: Vec3; headshot: boolean } | null = null;
+
+    for (const [playerId, entity] of players) {
+      if (playerId === shooterId) continue;
+      if (!entity.state.alive) continue;
+
+      const hit = raycastPlayer(
+        authOrigin,
+        spreadDir,
+        entity.state.position,
+        entity.state.crouching,
+        maxDist,
+      );
+
+      if (hit && (!closestHit || hit.distance < closestHit.distance)) {
+        closestHit = {
+          targetId: playerId,
+          distance: hit.distance,
+          point: hit.point,
+          headshot: hit.headshot,
+        };
+      }
+    }
+
+    if (closestHit) {
+      const damage = calculateDamage(
+        weaponConfig.damage,
+        closestHit.distance,
+        weaponConfig,
+        closestHit.headshot,
+      );
+
+      // Check if we already hit this player (multiple pellets)
+      const existing = hits.find(h => h.targetId === closestHit!.targetId);
+      if (existing) {
+        existing.damage += damage;
+        existing.headshot = existing.headshot || closestHit.headshot;
+      } else {
+        hits.push({
+          targetId: closestHit.targetId,
+          damage,
+          headshot: closestHit.headshot,
+          hitPosition: closestHit.point,
+        });
+      }
+    }
+  }
+
+  return hits;
+}
+</file>
+
+<file path="src/server/game/PlayerEntity.ts">
+// ========================================
+// Server-Side Player Entity
+// Authoritative player state + input processing
+// ========================================
+
+import type {
+  PlayerState,
+  InputState,
+  Vec3,
+  SpawnPoint,
+  AABB,
+} from "../../shared/types/index.js";
+import {
+  WeaponType,
+  createDefaultPlayerState,
+} from "../../shared/types/index.js";
+import { processMovement } from "../../shared/physics/movement.js";
+import { resolveCollisions } from "../../shared/physics/collision.js";
+import {
+  MAX_HP,
+  MAX_ARMOR,
+  WEAPONS,
+  RESPAWN_TIME,
+  SPAWN_PROTECTION_TIME,
+} from "../../shared/constants/index.js";
+
+export class PlayerEntity {
+  public state: PlayerState;
+  public inputQueue: InputState[] = [];
+  public lastProcessedSequence = 0;
+  public deathTime = 0;
+  public lastDamageBy = "";
+  public damageLog = new Map<string, number>();
+
+  constructor(id: string, nickname: string, spawnPoint: SpawnPoint) {
+    this.state = createDefaultPlayerState(id, nickname);
+    this.state.position = { ...spawnPoint.position };
+    this.state.position.y = spawnPoint.position.y;
+    this.state.rotation = { ...spawnPoint.rotation };
+  }
+
+  queueInput(input: InputState): void {
+    // Cap queue size to prevent memory issues from laggy clients
+    if (this.inputQueue.length > 30) {
+      this.inputQueue.shift();
+    }
+    this.inputQueue.push(input);
+  }
+
+  processInputs(mapBoxes: AABB[]): void {
+    if (!this.state.alive) {
+      this.inputQueue.length = 0;
+      return;
+    }
+
+    while (this.inputQueue.length > 0) {
+      const input = this.inputQueue.shift()!;
+      const dt = Math.min(input.deltaTime, 0.05); // cap delta to prevent speed hacks
+
+      // Update rotation from input
+      this.state.rotation.yaw = input.yaw;
+      this.state.rotation.pitch = input.pitch;
+
+      // Process movement
+      const moveResult = processMovement(
+        this.state.position,
+        this.state.velocity,
+        this.state.grounded,
+        this.state.slideTime,
+        input,
+        dt,
+      );
+
+      // Resolve collisions
+      const collResult = resolveCollisions(
+        moveResult.position,
+        moveResult.velocity,
+        moveResult.crouching,
+        mapBoxes,
+      );
+
+      // Update state
+      this.state.position = collResult.position;
+      this.state.velocity = collResult.velocity;
+      this.state.grounded = collResult.grounded;
+      this.state.crouching = moveResult.crouching;
+      this.state.sprinting = moveResult.sprinting;
+      this.state.sliding = moveResult.sliding;
+      this.state.slideTime = moveResult.slideTime;
+
+      this.lastProcessedSequence = input.sequence;
+    }
+  }
+
+  takeDamage(
+    amount: number,
+    attackerId: string,
+  ): { killed: boolean; assistors: string[] } {
+    if (!this.state.alive) return { killed: false, assistors: [] };
+
+    const now = Date.now();
+
+    if (this.state.spawnProtectionUntil > now) {
+      return { killed: false, assistors: [] };
+    }
+
+    if (attackerId !== this.state.id) {
+      this.damageLog.set(attackerId, now);
+    }
+
+    let remaining = amount;
+
+    // Armor absorbs 50% of damage
+    if (this.state.armor > 0) {
+      const armorAbsorb = Math.min(this.state.armor, remaining * 0.5);
+      this.state.armor -= armorAbsorb;
+      remaining -= armorAbsorb;
+    }
+
+    this.state.health -= remaining;
+    this.lastDamageBy = attackerId;
+
+    const assistors = Array.from(this.damageLog.entries())
+      .filter(
+        ([attacker, timestamp]) =>
+          attacker !== attackerId && now - timestamp <= 8000,
+      )
+      .map(([attacker]) => attacker);
+
+    if (this.state.health <= 0) {
+      this.state.health = 0;
+      this.die();
+      this.damageLog.clear();
+      return { killed: true, assistors };
+    }
+
+    return { killed: false, assistors: [] };
+  }
+
+  die(): void {
+    this.state.alive = false;
+    this.state.deaths++;
+    this.state.streak = 0;
+    this.deathTime = Date.now();
+    this.state.velocity = { x: 0, y: 0, z: 0 };
+  }
+
+  respawn(spawnPoint: SpawnPoint): void {
+    this.state.alive = true;
+    this.state.health = MAX_HP;
+    this.state.armor = 0;
+    this.state.position = { ...spawnPoint.position };
+    this.state.rotation = { ...spawnPoint.rotation };
+    this.state.velocity = { x: 0, y: 0, z: 0 };
+    this.state.grounded = false;
+    this.state.crouching = false;
+    this.state.sprinting = false;
+    this.state.sliding = false;
+    this.state.slideTime = 0;
+    this.state.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_TIME;
+
+    // Reset weapon
+    const weaponConfig = WEAPONS[this.state.weapon];
+    if (weaponConfig) {
+      this.state.ammo = weaponConfig.magazineSize;
+      this.state.maxAmmo = weaponConfig.magazineSize;
+    }
+    this.state.reloading = false;
+    this.state.reloadEndTime = 0;
+    this.state.lastFireTime = 0;
+    this.damageLog.clear();
+    this.inputQueue.length = 0;
+  }
+
+  startReload(now: number): void {
+    if (this.state.reloading) return;
+    const weaponConfig = WEAPONS[this.state.weapon];
+    if (!weaponConfig) return;
+    if (this.state.ammo >= weaponConfig.magazineSize) return;
+
+    this.state.reloading = true;
+    this.state.reloadEndTime = now + weaponConfig.reloadTime;
+  }
+
+  checkReload(now: number): void {
+    if (!this.state.reloading) return;
+    if (now >= this.state.reloadEndTime) {
+      const weaponConfig = WEAPONS[this.state.weapon];
+      if (weaponConfig) {
+        this.state.ammo = weaponConfig.magazineSize;
+      }
+      this.state.reloading = false;
+    }
+  }
+
+  canShoot(now: number): boolean {
+    if (!this.state.alive) return false;
+    if (this.state.reloading) return false;
+    if (this.state.ammo <= 0) return false;
+
+    const weaponConfig = WEAPONS[this.state.weapon];
+    if (!weaponConfig) return false;
+
+    const fireInterval = 1000 / weaponConfig.fireRate;
+    return now - this.state.lastFireTime >= fireInterval;
+  }
+
+  shoot(now: number): void {
+    this.state.ammo--;
+    this.state.lastFireTime = now;
+
+    // Auto-reload when empty
+    if (this.state.ammo <= 0) {
+      this.startReload(now);
+    }
+  }
+
+  shouldRespawn(now: number): boolean {
+    return !this.state.alive && now - this.deathTime >= RESPAWN_TIME;
+  }
+
+  toState(): PlayerState {
+    return { ...this.state };
+  }
+}
+</file>
+
+<file path="src/server/network/WebSocketServer.ts">
+// ========================================
+// Server-Side WebSocket Server
+// Manages client connections, packet routing, and room routing
+// ========================================
+
+import { WebSocketServer as WSServer, WebSocket } from "ws";
+import type { Server } from "http";
+import { decodePacket, encodePacket } from "../../shared/protocol/index.js";
+import type {
+  ClientPacket,
+  ServerPacket,
+} from "../../shared/protocol/index.js";
+import { PacketType } from "../../shared/protocol/index.js";
+import { RoomManager } from "../rooms/RoomManager.js";
+
+export class WebSocketServer {
+  private wss: WSServer;
+  private connections = new Map<string, WebSocket>();
+  private roomManager: RoomManager;
+
+  constructor(server: Server) {
+    this.wss = new WSServer({ noServer: true });
+
+    this.roomManager = new RoomManager(
+      (playerId, packet) => this.sendToPlayer(playerId, packet),
+      (roomId, packet, excludeId) =>
+        this.broadcastToRoom(roomId, packet, excludeId),
+    );
+
+    // Attach to server
+    server.on("upgrade", (request, socket, head) => {
+      // Allow any websocket connection on upgrade for MVP
+      this.wss.handleUpgrade(request, socket, head, (ws) => {
+        this.wss.emit("connection", ws, request);
+      });
+    });
+
+    this.wss.on("connection", (ws: WebSocket) => this.handleConnection(ws));
+    console.log("[WebSocketServer] Ready for connections");
+  }
+
+  private handleConnection(ws: WebSocket): void {
+    const playerId = "p_" + Math.random().toString(36).substring(2, 11);
+    this.connections.set(playerId, ws);
+
+    console.log(`[WebSocketServer] Client connected: ${playerId}`);
+
+    ws.on("message", (message: string) => {
+      try {
+        const rawPacket = message.toString();
+        const packet = decodePacket(rawPacket) as ClientPacket;
+        this.handlePacket(playerId, packet);
+      } catch (err) {
+        console.error(
+          `[WebSocketServer] Error processing message from ${playerId}:`,
+          err,
+        );
+        this.sendToPlayer(playerId, {
+          type: PacketType.S_ERROR,
+          message: "Invalid packet format",
+        });
+      }
+    });
+
+    ws.on("close", () => {
+      this.handleDisconnect(playerId);
+    });
+
+    ws.on("error", (error) => {
+      console.error(
+        `[WebSocketServer] Socket error for player ${playerId}:`,
+        error,
+      );
+      this.handleDisconnect(playerId);
+    });
+  }
+
+  private handleDisconnect(playerId: string): void {
+    if (!this.connections.has(playerId)) return;
+
+    this.connections.delete(playerId);
+    this.roomManager.removePlayer(playerId);
+    console.log(`[WebSocketServer] Client disconnected: ${playerId}`);
+  }
+
+  private handlePacket(playerId: string, packet: ClientPacket): void {
+    switch (packet.type) {
+      case PacketType.C_JOIN: {
+        const room = this.roomManager.joinOrCreate(
+          playerId,
+          packet.nickname,
+          packet.roomId,
+          packet.selectedWeapon,
+        );
+        // Also send updated room list to all connection lobbies (in a real game, or just respond/broadcast)
+        this.broadcastRoomList();
+        break;
+      }
+
+      case PacketType.C_INPUT: {
+        const room = this.roomManager.getPlayerRoom(playerId);
+        if (room) {
+          room.handleInput(playerId, packet.input);
+        }
+        break;
+      }
+
+      case PacketType.C_SHOOT: {
+        const room = this.roomManager.getPlayerRoom(playerId);
+        if (room) {
+          room.handleShoot(playerId, packet.origin, packet.direction);
+        }
+        break;
+      }
+
+      case PacketType.C_RELOAD: {
+        const room = this.roomManager.getPlayerRoom(playerId);
+        if (room) {
+          room.handleReload(playerId);
+        }
+        break;
+      }
+
+      case PacketType.C_PING: {
+        this.sendToPlayer(playerId, {
+          type: PacketType.S_PONG,
+          timestamp: packet.timestamp,
+        });
+        break;
+      }
+
+      default:
+        console.warn(
+          `[WebSocketServer] Unhandled packet type from ${playerId}:`,
+          (packet as any).type,
+        );
+    }
+  }
+
+  public sendToPlayer(playerId: string, packet: ServerPacket): void {
+    const ws = this.connections.get(playerId);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(encodePacket(packet));
+    }
+  }
+
+  public broadcastToRoom(
+    roomId: string,
+    packet: ServerPacket,
+    excludeId?: string,
+  ): void {
+    const room = this.roomManager.getRoom(roomId);
+    if (!room) return;
+
+    const payload = encodePacket(packet);
+
+    for (const playerId of room.players.keys()) {
+      if (playerId === excludeId) continue;
+      const ws = this.connections.get(playerId);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(payload);
+      }
+    }
+  }
+
+  private broadcastRoomList(): void {
+    const roomsInfo = this.roomManager.getRoomsInfo();
+    const packet: ServerPacket = {
+      type: PacketType.S_ROOM_LIST,
+      rooms: roomsInfo,
+    };
+    const payload = encodePacket(packet);
+
+    for (const ws of this.connections.values()) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(payload);
+      }
+    }
+  }
+
+  public shutdown(): void {
+    this.roomManager.destroy();
+    for (const ws of this.connections.values()) {
+      ws.close();
+    }
+    this.connections.clear();
+    this.wss.close();
+  }
+}
+</file>
+
+<file path="src/server/rooms/Room.ts">
+// ========================================
+// Server-Side Game Room
+// Manages players, game loop, and states
+// ========================================
+
+import type {
+  PlayerState,
+  InputState,
+  Vec3,
+  SpawnPoint,
+  Rotation,
+} from "../../shared/types/index.js";
+import { GamePhase, WeaponType } from "../../shared/types/index.js";
+import { PacketType } from "../../shared/protocol/index.js";
+import type { Packet, ServerPacket } from "../../shared/protocol/index.js";
+import {
+  TICK_INTERVAL,
+  NETWORK_INTERVAL,
+  RESPAWN_TIME,
+  KILL_LIMIT,
+  TIME_LIMIT,
+  MIN_PLAYERS_TO_START,
+  END_GAME_COOLDOWN,
+  WEAPONS,
+  BASE_KILL_SCORE,
+  HEADSHOT_BONUS,
+  ASSIST_SCORE,
+  SLIDE_KILL_BONUS,
+  MIDAIR_KILL_BONUS,
+  LONGSHOT_BONUS,
+  REVENGE_BONUS,
+  STREAK_BONUS_STEP,
+} from "../../shared/constants/index.js";
+import { ARENA_MAP } from "../../shared/maps/arena.js";
+import { PlayerEntity } from "../game/PlayerEntity.js";
+import { validateShot } from "../game/CombatSystem.js";
+import { vec3Distance } from "../../shared/physics/movement.js";
+
+export class Room {
+  public id: string;
+  public name: string;
+  public players = new Map<string, PlayerEntity>();
+  public phase: GamePhase = GamePhase.WAITING; // GamePhase.WAITING, GamePhase.PLAYING, GamePhase.ENDED
+  public timeRemaining = TIME_LIMIT;
+  public killLimit = KILL_LIMIT;
+
+  private sendToPlayer: (playerId: string, packet: ServerPacket) => void;
+  private broadcastToAll: (packet: ServerPacket, excludeId?: string) => void;
+
+  private gameLoopInterval: NodeJS.Timeout | null = null;
+  private snapshotInterval: NodeJS.Timeout | null = null;
+  private lastTickTime = 0;
+  private gameStartTime = 0;
+  private shutdownCallback: () => void;
+
+  constructor(
+    id: string,
+    name: string,
+    sendToPlayer: (playerId: string, packet: ServerPacket) => void,
+    broadcastToAll: (packet: ServerPacket, excludeId?: string) => void,
+    shutdownCallback: () => void,
+  ) {
+    this.id = id;
+    this.name = name;
+    this.sendToPlayer = sendToPlayer;
+    this.broadcastToAll = broadcastToAll;
+    this.shutdownCallback = shutdownCallback;
+
+    this.startIntervals();
+  }
+
+  private startIntervals(): void {
+    this.lastTickTime = Date.now();
+    this.gameLoopInterval = setInterval(() => this.tick(), TICK_INTERVAL);
+    this.snapshotInterval = setInterval(
+      () => this.broadcastSnapshot(),
+      NETWORK_INTERVAL,
+    );
+  }
+
+  public destroy(): void {
+    if (this.gameLoopInterval) clearInterval(this.gameLoopInterval);
+    if (this.snapshotInterval) clearInterval(this.snapshotInterval);
+    this.players.clear();
+  }
+
+  public handleJoin(
+    playerId: string,
+    nickname: string,
+    selectedWeapon?: string,
+  ): void {
+    const spawnPoint = this.getSpawnPoint();
+    const player = new PlayerEntity(playerId, nickname, spawnPoint);
+    if (selectedWeapon && WEAPONS[selectedWeapon]) {
+      player.state.weapon = selectedWeapon as WeaponType;
+    }
+    this.players.set(playerId, player);
+
+    // Initial ammo state
+    const weaponConfig = WEAPONS[player.state.weapon];
+    if (weaponConfig) {
+      player.state.ammo = weaponConfig.magazineSize;
+      player.state.maxAmmo = weaponConfig.magazineSize;
+    }
+
+    // Build current players record
+    const playersRecord: Record<string, PlayerState> = {};
+    for (const [id, entity] of this.players) {
+      playersRecord[id] = entity.toState();
+    }
+
+    // Acknowledge join
+    this.sendToPlayer(playerId, {
+      type: PacketType.S_JOIN_ACK,
+      playerId,
+      roomId: this.id,
+      map: ARENA_MAP,
+      state: {
+        players: playersRecord,
+        phase: this.phase,
+        timeRemaining: this.timeRemaining,
+        killLimit: this.killLimit,
+      },
+    });
+
+    // Notify others
+    this.broadcastToAll(
+      {
+        type: PacketType.S_PLAYER_JOINED,
+        player: player.toState(),
+      },
+      playerId,
+    );
+
+    console.log(`[Room ${this.id}] Player ${nickname} (${playerId}) joined`);
+
+    // Autostart game if we have enough players and are waiting
+    if (
+      this.phase === GamePhase.WAITING &&
+      this.players.size >= MIN_PLAYERS_TO_START
+    ) {
+      this.startGame();
+    }
+  }
+
+  public handleLeave(playerId: string): void {
+    const player = this.players.get(playerId);
+    if (!player) return;
+
+    this.players.delete(playerId);
+    this.broadcastToAll({
+      type: PacketType.S_PLAYER_LEFT,
+      playerId,
+    });
+
+    console.log(
+      `[Room ${this.id}] Player ${player.state.nickname} (${playerId}) left`,
+    );
+
+    if (this.players.size === 0) {
+      console.log(`[Room ${this.id}] Room is empty. Shutting down.`);
+      this.destroy();
+      this.shutdownCallback();
+    }
+  }
+
+  public handleInput(playerId: string, input: InputState): void {
+    const player = this.players.get(playerId);
+    if (player && player.state.alive) {
+      player.queueInput(input);
+    }
+  }
+
+  public handleShoot(playerId: string, origin: Vec3, direction: Vec3): void {
+    const shooter = this.players.get(playerId);
+    if (!shooter || !shooter.state.alive || shooter.state.reloading) return;
+
+    const now = Date.now();
+    if (!shooter.canShoot(now)) return;
+
+    // Trigger weapon shoot state
+    shooter.shoot(now);
+
+    const weaponConfig = WEAPONS[shooter.state.weapon];
+    if (!weaponConfig) return;
+
+    // Validate shot
+    const hits = validateShot(
+      origin,
+      direction,
+      playerId,
+      this.players,
+      ARENA_MAP.boxes,
+      weaponConfig,
+    );
+
+    // Apply damage to hits
+    for (const hit of hits) {
+      const target = this.players.get(hit.targetId);
+      if (!target) continue;
+
+      const { killed, assistors } = target.takeDamage(hit.damage, playerId);
+
+      // Confirm hit to shooter
+      this.sendToPlayer(playerId, {
+        type: PacketType.S_HIT_CONFIRM,
+        hit: {
+          targetId: hit.targetId,
+          damage: hit.damage,
+          headshot: hit.headshot,
+          position: hit.hitPosition,
+        },
+      });
+
+      if (killed) {
+        shooter.state.kills++;
+        shooter.state.streak++;
+
+        const distance = Math.round(vec3Distance(origin, hit.hitPosition));
+        const bonusTags: string[] = [];
+        let scoreDelta = BASE_KILL_SCORE;
+
+        if (hit.headshot) {
+          scoreDelta += HEADSHOT_BONUS;
+          bonusTags.push("Headshot");
+        }
+
+        if (shooter.state.sliding) {
+          scoreDelta += SLIDE_KILL_BONUS;
+          bonusTags.push("Slide Kill");
+        }
+
+        if (!target.state.grounded) {
+          scoreDelta += MIDAIR_KILL_BONUS;
+          bonusTags.push("Midair Kill");
+        }
+
+        if (distance >= 25) {
+          scoreDelta += LONGSHOT_BONUS;
+          bonusTags.push("Longshot");
+        }
+
+        if (shooter.lastDamageBy === hit.targetId) {
+          scoreDelta += REVENGE_BONUS;
+          bonusTags.push("Revenge");
+        }
+
+        const streakBonus = Math.min(
+          shooter.state.streak * STREAK_BONUS_STEP,
+          100,
+        );
+        if (streakBonus > 0) {
+          scoreDelta += streakBonus;
+          bonusTags.push(`Streak +${streakBonus}`);
+        }
+
+        shooter.state.score += scoreDelta;
+
+        for (const assistId of assistors) {
+          const assister = this.players.get(assistId);
+          if (!assister) continue;
+          assister.state.assists++;
+          assister.state.score += ASSIST_SCORE;
+        }
+
+        // Send kill notification
+        this.broadcastToAll({
+          type: PacketType.S_KILL,
+          kill: {
+            killerId: playerId,
+            killerName: shooter.state.nickname,
+            victimId: hit.targetId,
+            victimName: target.state.nickname,
+            weapon: shooter.state.weapon,
+            headshot: hit.headshot,
+            distance,
+            scoreDelta,
+            bonusTags,
+            timestamp: now,
+          },
+        });
+
+        // Send death packet to victim
+        this.sendToPlayer(hit.targetId, {
+          type: PacketType.S_DEATH,
+          killerId: playerId,
+          respawnTime: RESPAWN_TIME,
+        });
+
+        this.checkWinConditions();
+      }
+    }
+  }
+
+  public handleReload(playerId: string): void {
+    const player = this.players.get(playerId);
+    if (player && player.state.alive) {
+      player.startReload(Date.now());
+    }
+  }
+
+  private startGame(): void {
+    this.phase = GamePhase.PLAYING;
+    this.timeRemaining = TIME_LIMIT;
+    this.gameStartTime = Date.now();
+
+    // Respawn all players at game start
+    for (const player of this.players.values()) {
+      const spawnPoint = this.getSpawnPoint();
+      player.respawn(spawnPoint);
+      this.sendToPlayer(player.state.id, {
+        type: PacketType.S_SPAWN,
+        position: spawnPoint.position,
+        rotation: spawnPoint.rotation,
+      });
+    }
+
+    this.broadcastToAll({
+      type: PacketType.S_GAME_PHASE,
+      phase: this.phase,
+      timeRemaining: this.timeRemaining,
+    });
+
+    console.log(`[Room ${this.id}] Game started`);
+  }
+
+  private tick(): void {
+    const now = Date.now();
+    const dt = (now - this.lastTickTime) / 1000;
+    this.lastTickTime = now;
+
+    if (this.phase === GamePhase.PLAYING) {
+      // Update remaining time
+      const elapsed = now - this.gameStartTime;
+      this.timeRemaining = Math.max(TIME_LIMIT - elapsed, 0);
+
+      if (this.timeRemaining <= 0) {
+        this.endGame();
+        return;
+      }
+    }
+
+    // Update player simulations and timers
+    for (const player of this.players.values()) {
+      if (player.state.alive) {
+        player.checkReload(now);
+        player.processInputs(ARENA_MAP.boxes);
+      } else {
+        // Handle respawn timer
+        if (player.shouldRespawn(now)) {
+          const spawnPoint = this.getSpawnPoint();
+          player.respawn(spawnPoint);
+          this.sendToPlayer(player.state.id, {
+            type: PacketType.S_SPAWN,
+            position: spawnPoint.position,
+            rotation: spawnPoint.rotation,
+          });
+        }
+      }
+    }
+  }
+
+  private broadcastSnapshot(): void {
+    const playersRecord: Record<string, PlayerState> = {};
+    const lastProcessedInput: Record<string, number> = {};
+
+    for (const [id, entity] of this.players) {
+      playersRecord[id] = entity.toState();
+      lastProcessedInput[id] = entity.lastProcessedSequence;
+    }
+
+    this.broadcastToAll({
+      type: PacketType.S_SNAPSHOT,
+      tick: 0, // Tick counter can be simplified or omitted
+      timestamp: Date.now(),
+      players: playersRecord,
+      lastProcessedInput,
+      match: {
+        phase: this.phase,
+        timeRemaining: this.timeRemaining,
+        killLimit: this.killLimit,
+      },
+    });
+  }
+
+  private checkWinConditions(): void {
+    if (this.phase !== GamePhase.PLAYING) return;
+
+    // Check if any player has reached the kill limit
+    let winner: PlayerEntity | null = null;
+    for (const player of this.players.values()) {
+      if (player.state.kills >= this.killLimit) {
+        if (!winner || player.state.kills > winner.state.kills) {
+          winner = player;
+        }
+      }
+    }
+
+    if (winner) {
+      this.endGame(winner);
+    }
+  }
+
+  private endGame(winnerEntity?: PlayerEntity): void {
+    this.phase = GamePhase.ENDED;
+
+    let winnerInfo = undefined;
+    if (winnerEntity) {
+      winnerInfo = {
+        id: winnerEntity.state.id,
+        nickname: winnerEntity.state.nickname,
+        kills: winnerEntity.state.kills,
+      };
+    } else {
+      // Find player with most kills
+      let topPlayer: PlayerEntity | null = null;
+      for (const player of this.players.values()) {
+        if (!topPlayer || player.state.kills > topPlayer.state.kills) {
+          topPlayer = player;
+        }
+      }
+      if (topPlayer) {
+        winnerInfo = {
+          id: topPlayer.state.id,
+          nickname: topPlayer.state.nickname,
+          kills: topPlayer.state.kills,
+        };
+      }
+    }
+
+    this.broadcastToAll({
+      type: PacketType.S_GAME_PHASE,
+      phase: this.phase,
+      timeRemaining: 0,
+      winner: winnerInfo,
+    });
+
+    console.log(
+      `[Room ${this.id}] Game ended. Winner: ${winnerInfo?.nickname || "None"}`,
+    );
+
+    // Wait and restart game
+    setTimeout(() => this.restartGame(), END_GAME_COOLDOWN);
+  }
+
+  private restartGame(): void {
+    if (this.players.size === 0) {
+      this.phase = GamePhase.WAITING;
+      return;
+    }
+
+    // Reset scores
+    for (const player of this.players.values()) {
+      player.state.kills = 0;
+      player.state.deaths = 0;
+    }
+
+    this.startGame();
+  }
+
+  /**
+   * Selection of spawn point furthest from any other player
+   */
+  private getSpawnPoint(): SpawnPoint {
+    const spawns = ARENA_MAP.spawnPoints;
+    if (this.players.size === 0) {
+      return spawns[Math.floor(Math.random() * spawns.length)];
+    }
+
+    let bestSpawn = spawns[0];
+    let maxMinDistance = -1;
+
+    for (const spawn of spawns) {
+      let minDistance = Infinity;
+
+      for (const player of this.players.values()) {
+        if (!player.state.alive) continue;
+        const dist = vec3Distance(spawn.position, player.state.position);
+        if (dist < minDistance) {
+          minDistance = dist;
+        }
+      }
+
+      if (minDistance > maxMinDistance) {
+        maxMinDistance = minDistance;
+        bestSpawn = spawn;
+      }
+    }
+
+    return bestSpawn;
+  }
+}
+</file>
+
+<file path="src/server/rooms/RoomManager.ts">
+// ========================================
+// Server-Side Room Manager
+// Handles Room lifecycle and player routing
+// ========================================
+
+import { Room } from "./Room.js";
+import type { RoomInfo } from "../../shared/types/index.js";
+import type { ServerPacket } from "../../shared/protocol/index.js";
+import { MAX_PLAYERS_PER_ROOM } from "../../shared/constants/index.js";
+
+export class RoomManager {
+  private rooms = new Map<string, Room>();
+  private playerRooms = new Map<string, Room>();
+  private roomCount = 0;
+
+  private sendToPlayer: (playerId: string, packet: ServerPacket) => void;
+  private broadcastToRoom: (
+    roomId: string,
+    packet: ServerPacket,
+    excludeId?: string,
+  ) => void;
+
+  constructor(
+    sendToPlayer: (playerId: string, packet: ServerPacket) => void,
+    broadcastToRoom: (
+      roomId: string,
+      packet: ServerPacket,
+      excludeId?: string,
+    ) => void,
+  ) {
+    this.sendToPlayer = sendToPlayer;
+    this.broadcastToRoom = broadcastToRoom;
+  }
+
+  public getRoom(roomId: string): Room | undefined {
+    return this.rooms.get(roomId);
+  }
+
+  public getPlayerRoom(playerId: string): Room | undefined {
+    return this.playerRooms.get(playerId);
+  }
+
+  public joinOrCreate(
+    playerId: string,
+    nickname: string,
+    preferredRoomId?: string,
+    selectedWeapon?: string,
+  ): Room {
+    // Check if player is already in a room
+    const currentRoom = this.playerRooms.get(playerId);
+    if (currentRoom) {
+      if (preferredRoomId && currentRoom.id === preferredRoomId) {
+        return currentRoom;
+      }
+      this.removePlayer(playerId);
+    }
+
+    let targetRoom: Room | undefined;
+
+    // 1. Try preferred room
+    if (preferredRoomId) {
+      const room = this.rooms.get(preferredRoomId);
+      if (room && room.players.size < MAX_PLAYERS_PER_ROOM) {
+        targetRoom = room;
+      }
+    }
+
+    // 2. Try to find any existing room with space
+    if (!targetRoom) {
+      for (const room of this.rooms.values()) {
+        if (
+          room.players.size < MAX_PLAYERS_PER_ROOM &&
+          room.phase !== "ended"
+        ) {
+          targetRoom = room;
+          break;
+        }
+      }
+    }
+
+    // 3. Create a new room
+    if (!targetRoom) {
+      this.roomCount++;
+      const roomId = `room_${Math.random().toString(36).substring(2, 9)}`;
+      const roomName = `Arena #${this.roomCount}`;
+
+      targetRoom = new Room(
+        roomId,
+        roomName,
+        this.sendToPlayer,
+        (packet, excludeId) => this.broadcastToRoom(roomId, packet, excludeId),
+        () => this.onRoomShutdown(roomId),
+      );
+      this.rooms.set(roomId, targetRoom);
+      console.log(`[RoomManager] Created room ${roomName} (${roomId})`);
+    }
+
+    this.playerRooms.set(playerId, targetRoom);
+    targetRoom.handleJoin(playerId, nickname, selectedWeapon);
+
+    return targetRoom;
+  }
+
+  public removePlayer(playerId: string): void {
+    const room = this.playerRooms.get(playerId);
+    if (!room) return;
+
+    room.handleLeave(playerId);
+    this.playerRooms.delete(playerId);
+  }
+
+  public getRoomsInfo(): RoomInfo[] {
+    const infoList: RoomInfo[] = [];
+    for (const room of this.rooms.values()) {
+      infoList.push({
+        id: room.id,
+        name: room.name,
+        playerCount: room.players.size,
+        maxPlayers: MAX_PLAYERS_PER_ROOM,
+        phase: room.phase,
+      });
+    }
+    return infoList;
+  }
+
+  private onRoomShutdown(roomId: string): void {
+    const room = this.rooms.get(roomId);
+    if (room) {
+      // Clean up player mappings
+      for (const playerId of room.players.keys()) {
+        this.playerRooms.delete(playerId);
+      }
+      this.rooms.delete(roomId);
+      console.log(`[RoomManager] Closed room ${room.name} (${roomId})`);
+    }
+  }
+
+  public destroy(): void {
+    for (const room of this.rooms.values()) {
+      room.destroy();
+    }
+    this.rooms.clear();
+    this.playerRooms.clear();
+  }
+}
+</file>
+
+<file path="src/server/index.ts">
+// ========================================
+// Server Entry Point
+// Sets up Express, HTTP Server, and WebSocketServer
+// ========================================
+
+import express from 'express';
+import { createServer } from 'http';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { WebSocketServer } from './network/WebSocketServer.js';
+
+// Setup ES Modules path variables
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const server = createServer(app);
+
+const PORT = process.env.PORT || 3001;
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', players: 0 }); // roomManager players count can be added later
+});
+
+// Serve client assets in production
+const distPath = path.join(__dirname, '../client');
+app.use(express.static(distPath));
+
+// For SPA routing, serve index.html for any other requests
+app.get('*', (req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
+});
+
+// Initialize our WebSocketServer
+const wsServer = new WebSocketServer(server);
+
+// Start listening
+server.listen(PORT, () => {
+  console.log(`==================================================`);
+  console.log(`[Server] Listening on http://localhost:${PORT}`);
+  console.log(`[Server] WebSocket Upgrade active`);
+  console.log(`==================================================`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('[Server] SIGTERM received. Shutting down...');
+  wsServer.shutdown();
+  server.close(() => {
+    console.log('[Server] Server closed');
+    process.exit(0);
+  });
+});
+</file>
+
+<file path="src/shared/constants/index.ts">
+// ========================================
+// Game Constants
+// Single source of truth for all tunable game parameters
+// ========================================
+
+// ── Tick Rates ───────────────────────────────────────────
+
+export const TICK_RATE = 60;
+export const TICK_INTERVAL = 1000 / TICK_RATE; // ~16.67ms
+export const NETWORK_RATE = 20;
+export const NETWORK_INTERVAL = 1000 / NETWORK_RATE; // 50ms
+
+// ── Movement ─────────────────────────────────────────────
+
+export const WALK_SPEED = 8;
+export const SPRINT_SPEED = 14;
+export const CROUCH_SPEED = 4.5;
+export const SLIDE_SPEED = 18;
+export const SLIDE_DURATION = 0.8;
+export const SLIDE_JUMP_RETENTION = 0.92;
+export const JUMP_FORCE = 9;
+export const GRAVITY = -26;
+export const FRICTION = 12;
+export const SLIDE_FRICTION = 6;
+export const AIR_CONTROL = 0.65;
+export const GROUND_ACCELERATION = 20;
+export const AIR_ACCELERATION = 6;
+export const MAX_SPEED = 20;
+export const MAX_VELOCITY = MAX_SPEED;
+export const PLAYER_SPEED = WALK_SPEED;
+export const SPRINT_MULTIPLIER = SPRINT_SPEED / WALK_SPEED;
+export const CROUCH_MULTIPLIER = CROUCH_SPEED / WALK_SPEED;
+
+// ── Player Dimensions ────────────────────────────────────
+
+export const PLAYER_HEIGHT = 1.8;
+export const PLAYER_CROUCH_HEIGHT = 1.0;
+export const PLAYER_RADIUS = 0.4;
+export const PLAYER_EYE_OFFSET = 0.7; // from center of capsule upward
+
+// ── Health & Combat ──────────────────────────────────────
+
+export const MAX_HP = 100;
+export const MAX_ARMOR = 100;
+export const HEADSHOT_MULTIPLIER = 2.0;
+export const HEADSHOT_ZONE_RATIO = 0.25; // top 25% of hitbox is headshot
+
+// ── Game Rules ───────────────────────────────────────────
+
+export const MAX_PLAYERS_PER_ROOM = 8;
+export const RESPAWN_TIME = 2000; // ms
+export const SPAWN_PROTECTION_TIME = 1500; // ms
+export const KILL_LIMIT = 25;
+export const TIME_LIMIT = 300000; // 5 minutes in ms
+export const MIN_PLAYERS_TO_START = 1; // 1 for testing (normally 2)
+export const END_GAME_COOLDOWN = 5000; // ms before restart
+
+export const BASE_KILL_SCORE = 100;
+export const HEADSHOT_BONUS = 50;
+export const ASSIST_SCORE = 50;
+export const SLIDE_KILL_BONUS = 75;
+export const MIDAIR_KILL_BONUS = 75;
+export const LONGSHOT_BONUS = 50;
+export const REVENGE_BONUS = 25;
+export const STREAK_BONUS_STEP = 10;
+
+// ── Weapon Config Type ───────────────────────────────────
+
+export interface WeaponConfig {
+  id: string;
+  name: string;
+  damage: number;
+  headshotMultiplier: number;
+  fireRate: number; // rounds per second
+  spread: number; // radians
+  recoil: number; // vertical kick per shot (radians)
+  recoilHorizontal: number;
+  magazineSize: number;
+  reloadTime: number; // ms
+  range: number; // max effective range
+  falloffStart: number; // distance where damage starts falling
+  falloffEnd: number; // distance where damage reaches minimum
+  minDamage: number; // floor damage at max range
+  movementPenalty: number;
+  automatic: boolean;
+  pellets: number; // >1 for shotgun
+}
+
+// ── Weapon Definitions ───────────────────────────────────
+
+export const WEAPONS: Record<string, WeaponConfig> = {
+  assault_rifle: {
+    id: "assault_rifle",
+    name: "Assault Rifle",
+    damage: 25,
+    headshotMultiplier: 2.0,
+    fireRate: 10,
+    spread: 0.02,
+    recoil: 0.03,
+    recoilHorizontal: 0.01,
+    magazineSize: 30,
+    reloadTime: 2000,
+    range: 100,
+    falloffStart: 30,
+    falloffEnd: 80,
+    minDamage: 15,
+    movementPenalty: 0.05,
+    automatic: true,
+    pellets: 1,
+  },
+  smg: {
+    id: "smg",
+    name: "SMG",
+    damage: 18,
+    headshotMultiplier: 1.8,
+    fireRate: 15,
+    spread: 0.04,
+    recoil: 0.02,
+    recoilHorizontal: 0.015,
+    magazineSize: 35,
+    reloadTime: 1800,
+    range: 60,
+    falloffStart: 20,
+    falloffEnd: 50,
+    minDamage: 10,
+    movementPenalty: 0.1,
+    automatic: true,
+    pellets: 1,
+  },
+  sniper: {
+    id: "sniper",
+    name: "Sniper",
+    damage: 80,
+    headshotMultiplier: 2.5,
+    fireRate: 1,
+    spread: 0.001,
+    recoil: 0.08,
+    recoilHorizontal: 0.005,
+    magazineSize: 5,
+    reloadTime: 3000,
+    range: 200,
+    falloffStart: 100,
+    falloffEnd: 200,
+    minDamage: 60,
+    movementPenalty: 0.25,
+    automatic: false,
+    pellets: 1,
+  },
+  shotgun: {
+    id: "shotgun",
+    name: "Shotgun",
+    damage: 12,
+    headshotMultiplier: 1.5,
+    fireRate: 1.5,
+    spread: 0.1,
+    recoil: 0.06,
+    recoilHorizontal: 0.02,
+    magazineSize: 6,
+    reloadTime: 2500,
+    range: 30,
+    falloffStart: 8,
+    falloffEnd: 25,
+    minDamage: 5,
+    movementPenalty: 0.2,
+    automatic: false,
+    pellets: 8,
+  },
+  revolver: {
+    id: "revolver",
+    name: "Revolver",
+    damage: 58,
+    headshotMultiplier: 2.2,
+    fireRate: 2,
+    spread: 0.015,
+    recoil: 0.07,
+    recoilHorizontal: 0.02,
+    magazineSize: 6,
+    reloadTime: 2200,
+    range: 90,
+    falloffStart: 40,
+    falloffEnd: 120,
+    minDamage: 35,
+    movementPenalty: 0.12,
+    automatic: false,
+    pellets: 1,
+  },
+};
+
+// ── Interpolation / Prediction ───────────────────────────
+
+export const INTERPOLATION_DELAY = 100; // ms — buffer for smooth remote rendering
+export const PREDICTION_CORRECTION_RATE = 0.1; // how fast to lerp toward server state
+export const MAX_PREDICTION_ERROR = 3.0; // snap if error exceeds this distance
+</file>
+
+<file path="src/shared/maps/arena.ts">
+// ========================================
+// Arena Map Data
+// Block-based deathmatch arena (60x60 units)
+// Provides both collision geometry and spawn points
+// ========================================
+
+import type { MapData, AABB, SpawnPoint } from '../types/index.js';
+
+/**
+ * Compact arena with verticality and cover.
+ *
+ * Layout (top-down, Y is up):
+ *
+ *   +─────────────────────────────────+
+ *   │  SP                        SP   │
+ *   │        ▄▄▄▄                     │
+ *   │        █P1█  ◄ platform         │
+ *   │   ░░   ▀▀▀▀                     │
+ *   │   ░░  ◄ steps                   │
+ *   │              ┌──┐               │
+ *   │  SP    █ C █ │TW│  █ C █   SP   │
+ *   │              │  │               │
+ *   │              └──┘               │
+ *   │                   ░░            │
+ *   │                   ░░  ◄ steps   │
+ *   │                 ▄▄▄▄            │
+ *   │   SP            █P2█       SP   │
+ *   │                 ▀▀▀▀            │
+ *   │  SP                        SP   │
+ *   +─────────────────────────────────+
+ *
+ *   TW = Tower (center), P = Platform, C = Cover, ░ = Steps
+ */
+
+const boxes: AABB[] = [
+  // ── Floor ────────────────────────────────────────
+  { min: { x: -32, y: -1, z: -32 }, max: { x: 32, y: 0, z: 32 } },
+
+  // ── Perimeter Walls (2 units thick, 8 units tall) ──
+  { min: { x: -32, y: 0, z: -32 }, max: { x: 32, y: 8, z: -30 } },   // North
+  { min: { x: -32, y: 0, z: 30 }, max: { x: 32, y: 8, z: 32 } },     // South
+  { min: { x: 30, y: 0, z: -32 }, max: { x: 32, y: 8, z: 32 } },     // East
+  { min: { x: -32, y: 0, z: -32 }, max: { x: -30, y: 8, z: 32 } },   // West
+
+  // ── Central Tower (4x4x5) ───────────────────────
+  { min: { x: -2, y: 0, z: -2 }, max: { x: 2, y: 5, z: 2 } },
+
+  // ── Cover Blocks (low walls, 1.5 units tall) ────
+  // NW cover
+  { min: { x: -16, y: 0, z: -8 }, max: { x: -13, y: 1.5, z: -5 } },
+  // NE cover
+  { min: { x: 13, y: 0, z: -12 }, max: { x: 16, y: 1.5, z: -9 } },
+  // SW cover
+  { min: { x: -16, y: 0, z: 9 }, max: { x: -13, y: 1.5, z: 12 } },
+  // SE cover
+  { min: { x: 13, y: 0, z: 5 }, max: { x: 16, y: 1.5, z: 8 } },
+
+  // ── Large Cover Blocks near center ──────────────
+  { min: { x: -10, y: 0, z: -1.5 }, max: { x: -6, y: 2, z: 1.5 } },
+  { min: { x: 6, y: 0, z: -1.5 }, max: { x: 10, y: 2, z: 1.5 } },
+
+  // ── Platform NE (elevated, 3 units high) ────────
+  { min: { x: 15, y: 0, z: -25 }, max: { x: 25, y: 3, z: -18 } },
+  // Steps to Platform NE
+  { min: { x: 13, y: 0, z: -25 }, max: { x: 15, y: 1, z: -18 } },
+  { min: { x: 11, y: 0, z: -25 }, max: { x: 13, y: 2, z: -18 } },
+
+  // ── Platform SW (elevated, 3 units high) ────────
+  { min: { x: -25, y: 0, z: 18 }, max: { x: -15, y: 3, z: 25 } },
+  // Steps to Platform SW
+  { min: { x: -15, y: 0, z: 18 }, max: { x: -13, y: 1, z: 25 } },
+  { min: { x: -13, y: 0, z: 18 }, max: { x: -11, y: 2, z: 25 } },
+
+  // ── Jump Blocks (for movement tech) ─────────────
+  { min: { x: -22, y: 0, z: -3 }, max: { x: -19, y: 1.2, z: 0 } },
+  { min: { x: 19, y: 0, z: 0 }, max: { x: 22, y: 1.2, z: 3 } },
+
+  // ── Small Crates near center (jump over or behind)
+  { min: { x: -5, y: 0, z: -8 }, max: { x: -3, y: 1, z: -6 } },
+  { min: { x: 3, y: 0, z: 6 }, max: { x: 5, y: 1, z: 8 } },
+
+  // ── Mid-height walls for sight lines ────────────
+  { min: { x: -1, y: 0, z: -15 }, max: { x: 1, y: 2.5, z: -10 } },
+  { min: { x: -1, y: 0, z: 10 }, max: { x: 1, y: 2.5, z: 15 } },
+];
+
+const spawnPoints: SpawnPoint[] = [
+  // Spread around the perimeter, facing center
+  { position: { x: -25, y: 0, z: -25 }, rotation: { yaw: Math.PI / 4, pitch: 0 } },
+  { position: { x: 25, y: 0, z: -25 }, rotation: { yaw: -Math.PI / 4 + Math.PI, pitch: 0 } },
+  { position: { x: -25, y: 0, z: 25 }, rotation: { yaw: -Math.PI / 4, pitch: 0 } },
+  { position: { x: 25, y: 0, z: 25 }, rotation: { yaw: Math.PI / 4 + Math.PI, pitch: 0 } },
+  { position: { x: 0, y: 0, z: -25 }, rotation: { yaw: 0, pitch: 0 } },
+  { position: { x: 0, y: 0, z: 25 }, rotation: { yaw: Math.PI, pitch: 0 } },
+  { position: { x: -25, y: 0, z: 0 }, rotation: { yaw: Math.PI / 2, pitch: 0 } },
+  { position: { x: 25, y: 0, z: 0 }, rotation: { yaw: -Math.PI / 2, pitch: 0 } },
+];
+
+export const ARENA_MAP: MapData = {
+  name: 'Arena',
+  boxes,
+  spawnPoints,
+  bounds: {
+    min: { x: -30, y: 0, z: -30 },
+    max: { x: 30, y: 20, z: 30 },
+  },
+};
+</file>
+
+<file path="src/shared/physics/collision.ts">
+// ========================================
+// Shared Collision System
+// AABB-based collision detection and resolution
+// Used by BOTH client and server
+// ========================================
+
+import type { Vec3, AABB } from '../types/index.js';
+import {
+  PLAYER_RADIUS,
+  PLAYER_HEIGHT,
+  PLAYER_CROUCH_HEIGHT,
+} from '../constants/index.js';
+
+// ── AABB Helpers ─────────────────────────────────────────
+
+export function aabbOverlaps(a: AABB, b: AABB): boolean {
+  return (
+    a.min.x < b.max.x && a.max.x > b.min.x &&
+    a.min.y < b.max.y && a.max.y > b.min.y &&
+    a.min.z < b.max.z && a.max.z > b.min.z
+  );
+}
+
+/**
+ * Get the penetration depth on each axis.
+ * Returns the smallest overlap on each axis — used for resolution.
+ */
+export function aabbPenetration(a: AABB, b: AABB): Vec3 {
+  const overlapX = Math.min(a.max.x - b.min.x, b.max.x - a.min.x);
+  const overlapY = Math.min(a.max.y - b.min.y, b.max.y - a.min.y);
+  const overlapZ = Math.min(a.max.z - b.min.z, b.max.z - a.min.z);
+  return { x: overlapX, y: overlapY, z: overlapZ };
+}
+
+// ── Player AABB ──────────────────────────────────────────
+
+/**
+ * Create an AABB for the player at a given position.
+ * Position is the center-bottom of the player capsule (feet).
+ */
+export function getPlayerAABB(position: Vec3, crouching: boolean): AABB {
+  const height = crouching ? PLAYER_CROUCH_HEIGHT : PLAYER_HEIGHT;
+  return {
+    min: {
+      x: position.x - PLAYER_RADIUS,
+      y: position.y,
+      z: position.z - PLAYER_RADIUS,
+    },
+    max: {
+      x: position.x + PLAYER_RADIUS,
+      y: position.y + height,
+      z: position.z + PLAYER_RADIUS,
+    },
+  };
+}
+
+// ── Collision Resolution ─────────────────────────────────
+
+export interface CollisionResult {
+  position: Vec3;
+  velocity: Vec3;
+  grounded: boolean;
+}
+
+/**
+ * Resolve player position against static map geometry.
+ * Pushes the player out of any overlapping boxes.
+ * Uses minimum penetration axis (slide along walls, don't stick).
+ */
+export function resolveCollisions(
+  position: Vec3,
+  velocity: Vec3,
+  crouching: boolean,
+  mapBoxes: AABB[],
+): CollisionResult {
+  let px = position.x;
+  let py = position.y;
+  let pz = position.z;
+  let vx = velocity.x;
+  let vy = velocity.y;
+  let vz = velocity.z;
+  let grounded = false;
+
+  // Iterate multiple times to handle corner cases
+  for (let iter = 0; iter < 4; iter++) {
+    const playerAABB = getPlayerAABB({ x: px, y: py, z: pz }, crouching);
+    let resolved = false;
+
+    for (const box of mapBoxes) {
+      if (!aabbOverlaps(playerAABB, box)) continue;
+
+      const pen = aabbPenetration(playerAABB, box);
+
+      // Find minimum penetration axis
+      if (pen.y <= pen.x && pen.y <= pen.z) {
+        // Y axis resolution
+        if (playerAABB.min.y < box.max.y && playerAABB.max.y > box.max.y) {
+          // Player is above the box — push up (landed on top)
+          py = box.max.y;
+          if (vy < 0) vy = 0;
+          grounded = true;
+        } else {
+          // Player hit ceiling — push down
+          const height = crouching ? PLAYER_CROUCH_HEIGHT : PLAYER_HEIGHT;
+          py = box.min.y - height;
+          if (vy > 0) vy = 0;
+        }
+        resolved = true;
+      } else if (pen.x <= pen.z) {
+        // X axis resolution
+        if (px < (box.min.x + box.max.x) / 2) {
+          px -= pen.x;
+        } else {
+          px += pen.x;
+        }
+        vx = 0;
+        resolved = true;
+      } else {
+        // Z axis resolution
+        if (pz < (box.min.z + box.max.z) / 2) {
+          pz -= pen.z;
+        } else {
+          pz += pen.z;
+        }
+        vz = 0;
+        resolved = true;
+      }
+    }
+
+    if (!resolved) break;
+  }
+
+  // Floor check (no falling through ground at y=0)
+  if (py < 0) {
+    py = 0;
+    if (vy < 0) vy = 0;
+    grounded = true;
+  }
+
+  return {
+    position: { x: px, y: py, z: pz },
+    velocity: { x: vx, y: vy, z: vz },
+    grounded,
+  };
+}
+
+// ── Raycast ──────────────────────────────────────────────
+
+export interface RaycastHit {
+  distance: number;
+  point: Vec3;
+  normal: Vec3;
+  boxIndex: number;
+}
+
+/**
+ * Cast a ray against AABB geometry.
+ * Returns the closest intersection, or null.
+ * Uses slab method for ray-AABB intersection.
+ */
+export function raycastAABB(
+  origin: Vec3,
+  direction: Vec3,
+  box: AABB,
+  maxDistance: number,
+): { distance: number; point: Vec3; normal: Vec3 } | null {
+  let tmin = 0;
+  let tmax = maxDistance;
+  const normal: Vec3 = { x: 0, y: 0, z: 0 };
+
+  // X slab
+  if (Math.abs(direction.x) < 0.00001) {
+    if (origin.x < box.min.x || origin.x > box.max.x) return null;
+  } else {
+    let t1 = (box.min.x - origin.x) / direction.x;
+    let t2 = (box.max.x - origin.x) / direction.x;
+    let n = -1;
+    if (t1 > t2) { [t1, t2] = [t2, t1]; n = 1; }
+    if (t1 > tmin) { tmin = t1; normal.x = n; normal.y = 0; normal.z = 0; }
+    if (t2 < tmax) tmax = t2;
+    if (tmin > tmax) return null;
+  }
+
+  // Y slab
+  if (Math.abs(direction.y) < 0.00001) {
+    if (origin.y < box.min.y || origin.y > box.max.y) return null;
+  } else {
+    let t1 = (box.min.y - origin.y) / direction.y;
+    let t2 = (box.max.y - origin.y) / direction.y;
+    let n = -1;
+    if (t1 > t2) { [t1, t2] = [t2, t1]; n = 1; }
+    if (t1 > tmin) { tmin = t1; normal.x = 0; normal.y = n; normal.z = 0; }
+    if (t2 < tmax) tmax = t2;
+    if (tmin > tmax) return null;
+  }
+
+  // Z slab
+  if (Math.abs(direction.z) < 0.00001) {
+    if (origin.z < box.min.z || origin.z > box.max.z) return null;
+  } else {
+    let t1 = (box.min.z - origin.z) / direction.z;
+    let t2 = (box.max.z - origin.z) / direction.z;
+    let n = -1;
+    if (t1 > t2) { [t1, t2] = [t2, t1]; n = 1; }
+    if (t1 > tmin) { tmin = t1; normal.x = 0; normal.y = 0; normal.z = n; }
+    if (t2 < tmax) tmax = t2;
+    if (tmin > tmax) return null;
+  }
+
+  if (tmin < 0) return null;
+
+  return {
+    distance: tmin,
+    point: {
+      x: origin.x + direction.x * tmin,
+      y: origin.y + direction.y * tmin,
+      z: origin.z + direction.z * tmin,
+    },
+    normal,
+  };
+}
+
+/**
+ * Raycast against all map boxes.
+ * Returns the closest hit, or null.
+ */
+export function raycastMap(
+  origin: Vec3,
+  direction: Vec3,
+  boxes: AABB[],
+  maxDistance: number,
+): RaycastHit | null {
+  let closest: RaycastHit | null = null;
+
+  for (let i = 0; i < boxes.length; i++) {
+    const hit = raycastAABB(origin, direction, boxes[i], maxDistance);
+    if (hit && (!closest || hit.distance < closest.distance)) {
+      closest = { ...hit, boxIndex: i };
+    }
+  }
+
+  return closest;
+}
+
+/**
+ * Raycast against a player's AABB hitbox.
+ * Returns distance and whether it's a headshot.
+ */
+export function raycastPlayer(
+  origin: Vec3,
+  direction: Vec3,
+  targetPosition: Vec3,
+  targetCrouching: boolean,
+  maxDistance: number,
+): { distance: number; point: Vec3; headshot: boolean } | null {
+  const playerBox = getPlayerAABB(targetPosition, targetCrouching);
+  const hit = raycastAABB(origin, direction, playerBox, maxDistance);
+
+  if (!hit) return null;
+
+  // Determine headshot — check if hit point is in top portion of hitbox
+  const height = targetCrouching ? PLAYER_CROUCH_HEIGHT : PLAYER_HEIGHT;
+  const headThreshold = targetPosition.y + height * (1 - 0.25);
+  const headshot = hit.point.y >= headThreshold;
+
+  return {
+    distance: hit.distance,
+    point: hit.point,
+    headshot,
+  };
+}
+</file>
+
+<file path="src/shared/physics/movement.ts">
+// ========================================
+// Shared Movement Physics
+// Quake/Source-inspired acceleration model
+// Used by BOTH client (prediction) and server (authority)
+// ========================================
+
+import type { Vec3, InputState, Rotation } from "../types/index.js";
+import {
+  WALK_SPEED,
+  SPRINT_SPEED,
+  CROUCH_SPEED,
+  SLIDE_SPEED,
+  SLIDE_DURATION,
+  SLIDE_JUMP_RETENTION,
+  JUMP_FORCE,
+  GRAVITY,
+  FRICTION,
+  SLIDE_FRICTION,
+  AIR_CONTROL,
+  GROUND_ACCELERATION,
+  AIR_ACCELERATION,
+  MAX_SPEED,
+  MAX_VELOCITY,
+} from "../constants/index.js";
+
+// ── Vec3 Helpers ─────────────────────────────────────────
+
+export function vec3Zero(): Vec3 {
+  return { x: 0, y: 0, z: 0 };
+}
+
+export function vec3Add(a: Vec3, b: Vec3): Vec3 {
+  return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
+}
+
+export function vec3Scale(v: Vec3, s: number): Vec3 {
+  return { x: v.x * s, y: v.y * s, z: v.z * s };
+}
+
+export function vec3Length(v: Vec3): number {
+  return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+}
+
+export function vec3LengthXZ(v: Vec3): number {
+  return Math.sqrt(v.x * v.x + v.z * v.z);
+}
+
+export function vec3Normalize(v: Vec3): Vec3 {
+  const len = vec3Length(v);
+  if (len < 0.0001) return vec3Zero();
+  return { x: v.x / len, y: v.y / len, z: v.z / len };
+}
+
+export function vec3Dot(a: Vec3, b: Vec3): number {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+export function vec3DotXZ(a: Vec3, b: Vec3): number {
+  return a.x * b.x + a.z * b.z;
+}
+
+export function vec3Copy(v: Vec3): Vec3 {
+  return { x: v.x, y: v.y, z: v.z };
+}
+
+export function vec3Distance(a: Vec3, b: Vec3): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const dz = a.z - b.z;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+// ── Movement Result ──────────────────────────────────────
+
+export interface MovementResult {
+  position: Vec3;
+  velocity: Vec3;
+  grounded: boolean;
+  crouching: boolean;
+  sprinting: boolean;
+  sliding: boolean;
+  slideTime: number;
+}
+
+// ── Wish Direction ───────────────────────────────────────
+
+/**
+ * Calculate the desired movement direction from input + camera yaw.
+ * Returns a normalized XZ-plane direction vector.
+ */
+export function getWishDirection(input: InputState): Vec3 {
+  let fx = 0;
+  let fz = 0;
+
+  // Forward is -Z in Three.js
+  if (input.forward) fz -= 1;
+  if (input.backward) fz += 1;
+  if (input.left) fx -= 1;
+  if (input.right) fx += 1;
+
+  if (fx === 0 && fz === 0) return vec3Zero();
+
+  // Rotate by yaw
+  const sinYaw = Math.sin(input.yaw);
+  const cosYaw = Math.cos(input.yaw);
+
+  const dir: Vec3 = {
+    x: fx * cosYaw + fz * sinYaw,
+    y: 0,
+    z: -fx * sinYaw + fz * cosYaw,
+  };
+
+  const len = Math.sqrt(dir.x * dir.x + dir.z * dir.z);
+  if (len > 0.0001) {
+    dir.x /= len;
+    dir.z /= len;
+  }
+
+  return dir;
+}
+
+// ── Core Movement Step ───────────────────────────────────
+
+/**
+ * Process one tick of movement physics.
+ * This is the authoritative movement function — deterministic given same inputs.
+ */
+export function processMovement(
+  position: Vec3,
+  velocity: Vec3,
+  grounded: boolean,
+  slideTime: number,
+  input: InputState,
+  dt: number,
+): MovementResult {
+  const crouching = input.crouch;
+  const sprinting = input.sprint && !crouching;
+  const sliding = grounded && input.sprint && input.crouch;
+
+  // Update slide timer while activating slide and while grounded
+  if (sliding) {
+    slideTime = Math.min(slideTime + dt, SLIDE_DURATION);
+  } else {
+    slideTime = 0;
+  }
+
+  const isSliding = slideTime > 0;
+  const wishDir = getWishDirection(input);
+  const hasWishDir =
+    Math.abs(wishDir.x) > 0.0001 || Math.abs(wishDir.z) > 0.0001;
+
+  let targetSpeed = WALK_SPEED;
+  if (isSliding) targetSpeed = SLIDE_SPEED;
+  else if (sprinting) targetSpeed = SPRINT_SPEED;
+  else if (crouching) targetSpeed = CROUCH_SPEED;
+
+  let vx = velocity.x;
+  let vy = velocity.y;
+  let vz = velocity.z;
+
+  if (grounded) {
+    // Ground friction
+    const speed = Math.sqrt(vx * vx + vz * vz);
+    const friction = isSliding ? SLIDE_FRICTION : FRICTION;
+    if (speed > 0.01) {
+      const drop = speed * friction * dt;
+      const scale = Math.max(speed - drop, 0) / speed;
+      vx *= scale;
+      vz *= scale;
+    } else {
+      vx = 0;
+      vz = 0;
+    }
+
+    // Accelerate toward desired move direction
+    if (hasWishDir) {
+      const currentSpeed = vx * wishDir.x + vz * wishDir.z;
+      const addSpeed = targetSpeed - currentSpeed;
+      if (addSpeed > 0) {
+        const accel = isSliding
+          ? GROUND_ACCELERATION * 1.2
+          : GROUND_ACCELERATION;
+        const accelSpeed = Math.min(accel * dt * targetSpeed, addSpeed);
+        vx += wishDir.x * accelSpeed;
+        vz += wishDir.z * accelSpeed;
+      }
+    }
+
+    if (input.jump) {
+      vy = JUMP_FORCE;
+      grounded = false;
+
+      if (isSliding) {
+        vx *= SLIDE_JUMP_RETENTION;
+        vz *= SLIDE_JUMP_RETENTION;
+      }
+    }
+  } else {
+    // Air control
+    if (hasWishDir) {
+      const airSpeed = Math.max(targetSpeed, WALK_SPEED) * AIR_CONTROL;
+      const currentSpeed = vx * wishDir.x + vz * wishDir.z;
+      const addSpeed = airSpeed - currentSpeed;
+      if (addSpeed > 0) {
+        const accelSpeed = Math.min(AIR_ACCELERATION * dt * airSpeed, addSpeed);
+        vx += wishDir.x * accelSpeed;
+        vz += wishDir.z * accelSpeed;
+      }
+    }
+  }
+
+  // Apply gravity
+  vy += GRAVITY * dt;
+
+  // Cap horizontal velocity
+  const hSpeed = Math.sqrt(vx * vx + vz * vz);
+  if (hSpeed > MAX_SPEED) {
+    const scale = MAX_SPEED / hSpeed;
+    vx *= scale;
+    vz *= scale;
+  }
+
+  const newPos: Vec3 = {
+    x: position.x + vx * dt,
+    y: position.y + vy * dt,
+    z: position.z + vz * dt,
+  };
+
+  return {
+    position: newPos,
+    velocity: { x: vx, y: vy, z: vz },
+    grounded,
+    crouching,
+    sprinting,
+    sliding: isSliding,
+    slideTime,
+  };
+}
+</file>
+
+<file path="src/shared/protocol/index.ts">
+// ========================================
+// Network Protocol — Packet Schema
+// Strongly-typed packets for client ↔ server communication
+// JSON serialization for MVP (upgrade to binary in Phase 6)
+// ========================================
+
+import type {
+  InputState,
+  PlayerState,
+  GamePhase,
+  Vec3,
+  KillEvent,
+  HitEvent,
+  RoomInfo,
+  MapData,
+  Rotation,
+  WeaponType,
+} from "../types/index.js";
+
+// ── Packet Type Enum ──────────────────────────────────────
+
+export enum PacketType {
+  // Client → Server
+  C_JOIN = "c_join",
+  C_INPUT = "c_input",
+  C_SHOOT = "c_shoot",
+  C_RELOAD = "c_reload",
+  C_PING = "c_ping",
+
+  // Server → Client
+  S_JOIN_ACK = "s_join_ack",
+  S_PLAYER_JOINED = "s_player_joined",
+  S_PONG = "s_pong",
+  S_PLAYER_LEFT = "s_player_left",
+  S_SNAPSHOT = "s_snapshot",
+  S_HIT_CONFIRM = "s_hit_confirm",
+  S_KILL = "s_kill",
+  S_DEATH = "s_death",
+  S_SPAWN = "s_spawn",
+  S_GAME_PHASE = "s_game_phase",
+  S_ROOM_LIST = "s_room_list",
+  S_ERROR = "s_error",
+}
+
+// ── Client → Server Packets ──────────────────────────────
+
+export interface JoinPacket {
+  type: PacketType.C_JOIN;
+  nickname: string;
+  roomId?: string;
+  selectedWeapon?: WeaponType;
+}
+
+export interface InputPacket {
+  type: PacketType.C_INPUT;
+  input: InputState;
+}
+
+export interface ShootPacket {
+  type: PacketType.C_SHOOT;
+  origin: Vec3;
+  direction: Vec3;
+  timestamp: number;
+}
+
+export interface ReloadPacket {
+  type: PacketType.C_RELOAD;
+}
+export interface PingPacket {
+  type: PacketType.C_PING;
+  timestamp: number;
+}
+// ── Server → Client Packets ──────────────────────────────
+
+export interface JoinAckPacket {
+  type: PacketType.S_JOIN_ACK;
+  playerId: string;
+  roomId: string;
+  map: MapData;
+  state: {
+    players: Record<string, PlayerState>;
+    phase: GamePhase;
+    timeRemaining: number;
+    killLimit: number;
+  };
+}
+
+export interface PlayerJoinedPacket {
+  type: PacketType.S_PLAYER_JOINED;
+  player: PlayerState;
+}
+
+export interface PlayerLeftPacket {
+  type: PacketType.S_PLAYER_LEFT;
+  playerId: string;
+}
+
+export interface SnapshotPacket {
+  type: PacketType.S_SNAPSHOT;
+  tick: number;
+  timestamp: number;
+  players: Record<string, PlayerState>;
+  lastProcessedInput: Record<string, number>;
+  match: {
+    phase: GamePhase;
+    timeRemaining: number;
+    killLimit: number;
+  };
+}
+
+export interface HitConfirmPacket {
+  type: PacketType.S_HIT_CONFIRM;
+  hit: HitEvent;
+}
+
+export interface KillPacket {
+  type: PacketType.S_KILL;
+  kill: KillEvent;
+}
+
+export interface DeathPacket {
+  type: PacketType.S_DEATH;
+  killerId: string;
+  respawnTime: number;
+}
+
+export interface SpawnPacket {
+  type: PacketType.S_SPAWN;
+  position: Vec3;
+  rotation: Rotation;
+}
+
+export interface GamePhasePacket {
+  type: PacketType.S_GAME_PHASE;
+  phase: GamePhase;
+  timeRemaining: number;
+  winner?: { id: string; nickname: string; kills: number };
+}
+
+export interface RoomListPacket {
+  type: PacketType.S_ROOM_LIST;
+  rooms: RoomInfo[];
+}
+
+export interface PongPacket {
+  type: PacketType.S_PONG;
+  timestamp: number;
+}
+
+export interface ErrorPacket {
+  type: PacketType.S_ERROR;
+  message: string;
+}
+
+// ── Union Types ──────────────────────────────────────────
+
+export type ClientPacket =
+  | JoinPacket
+  | InputPacket
+  | ShootPacket
+  | ReloadPacket
+  | PingPacket;
+export type ServerPacket =
+  | JoinAckPacket
+  | PlayerJoinedPacket
+  | PlayerLeftPacket
+  | SnapshotPacket
+  | HitConfirmPacket
+  | KillPacket
+  | DeathPacket
+  | SpawnPacket
+  | GamePhasePacket
+  | RoomListPacket
+  | PongPacket
+  | ErrorPacket;
+
+export type Packet = ClientPacket | ServerPacket;
+
+// ── Serialization ────────────────────────────────────────
+
+export function encodePacket(packet: Packet): string {
+  return JSON.stringify(packet);
+}
+
+export function decodePacket(data: string): Packet {
+  return JSON.parse(data) as Packet;
+}
+</file>
+
+<file path="src/shared/types/index.ts">
+// ========================================
+// Shared Type Definitions
+// Used by both client and server
+// ========================================
+
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface Rotation {
+  yaw: number; // horizontal rotation (radians)
+  pitch: number; // vertical rotation (radians)
+}
+
+export enum WeaponType {
+  ASSAULT_RIFLE = "assault_rifle",
+  SNIPER = "sniper",
+  SMG = "smg",
+  SHOTGUN = "shotgun",
+  REVOLVER = "revolver",
+}
+
+export enum GamePhase {
+  WAITING = "waiting",
+  PLAYING = "playing",
+  ENDED = "ended",
+}
+
+export interface PlayerState {
+  id: string;
+  nickname: string;
+  position: Vec3;
+  velocity: Vec3;
+  rotation: Rotation;
+  health: number;
+  armor: number;
+  alive: boolean;
+  crouching: boolean;
+  sprinting: boolean;
+  sliding: boolean;
+  slideTime: number;
+  grounded: boolean;
+  weapon: WeaponType;
+  ammo: number;
+  maxAmmo: number;
+  reloading: boolean;
+  reloadEndTime: number;
+  lastFireTime: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  score: number;
+  streak: number;
+  spawnProtectionUntil: number;
+}
+
+export interface InputState {
+  forward: boolean;
+  backward: boolean;
+  left: boolean;
+  right: boolean;
+  jump: boolean;
+  sprint: boolean;
+  crouch: boolean;
+  shoot: boolean;
+  reload: boolean;
+  yaw: number;
+  pitch: number;
+  sequence: number;
+  deltaTime: number;
+}
+
+export interface RoomInfo {
+  id: string;
+  name: string;
+  playerCount: number;
+  maxPlayers: number;
+  phase: GamePhase;
+}
+
+export interface KillEvent {
+  killerId: string;
+  killerName: string;
+  victimId: string;
+  victimName: string;
+  weapon: WeaponType;
+  headshot: boolean;
+  distance?: number;
+  scoreDelta?: number;
+  bonusTags?: string[];
+  timestamp: number;
+}
+
+export interface HitEvent {
+  targetId: string;
+  damage: number;
+  headshot: boolean;
+  position: Vec3;
+}
+
+export interface SpawnPoint {
+  position: Vec3;
+  rotation: Rotation;
+}
+
+// Axis-Aligned Bounding Box
+export interface AABB {
+  min: Vec3;
+  max: Vec3;
+}
+
+export interface MapData {
+  name: string;
+  boxes: AABB[];
+  spawnPoints: SpawnPoint[];
+  bounds: AABB;
+}
+
+// Helper to create default player state
+export function createDefaultPlayerState(
+  id: string,
+  nickname: string,
+): PlayerState {
+  return {
+    id,
+    nickname,
+    position: { x: 0, y: 1, z: 0 },
+    velocity: { x: 0, y: 0, z: 0 },
+    rotation: { yaw: 0, pitch: 0 },
+    health: 100,
+    armor: 0,
+    alive: true,
+    crouching: false,
+    sprinting: false,
+    sliding: false,
+    slideTime: 0,
+    grounded: false,
+    weapon: WeaponType.ASSAULT_RIFLE,
+    ammo: 30,
+    maxAmmo: 30,
+    reloading: false,
+    reloadEndTime: 0,
+    lastFireTime: 0,
+    kills: 0,
+    deaths: 0,
+    assists: 0,
+    score: 0,
+    streak: 0,
+    spawnProtectionUntil: 0,
+  };
+}
+</file>
+
+<file path=".env.example">
+# Server
+PORT=3001
+NODE_ENV=development
+
+# Client (prefix with VITE_ for client-side access)
+VITE_WS_URL=ws://localhost:3001
+</file>
+
+<file path=".gitignore">
+node_modules/
+dist/
+.env
+*.tsbuildinfo
+.DS_Store
+</file>
+
+<file path="index.html">
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Fast-paced browser-based 3D multiplayer FPS arena shooter" />
+    <title>Arena FPS</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body, #root { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/client/main.tsx"></script>
+  </body>
+</html>
+</file>
+
+<file path="package.json">
+{
+  "name": "arena-fps",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n client,server -c cyan,yellow \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:client": "vite",
+    "dev:server": "tsx watch src/server/index.ts",
+    "build": "vite build && tsc -p tsconfig.server.json --noEmit false --outDir dist",
+    "start": "node dist/server/index.js"
+  },
+  "dependencies": {
+    "@react-three/drei": "^9.114.0",
+    "@react-three/fiber": "^8.17.10",
+    "express": "^4.21.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.170.0",
+    "ws": "^8.18.0",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.14",
+    "@types/express": "^4.17.21",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.170.0",
+    "@types/ws": "^8.5.13",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "tailwindcss": "^4.0.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["src/shared/*"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}
+</file>
+
+<file path="tsconfig.server.json">
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  "include": ["src/server", "src/shared"]
+}
+</file>
+
+<file path="vite.config.ts">
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+import path from 'path';
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      '@shared': path.resolve(__dirname, 'src/shared'),
+    },
+  },
+  server: {
+    port: 3000,
+  },
+  build: {
+    outDir: 'dist/client',
+    sourcemap: true,
+  },
+});
+</file>
+
+</files>

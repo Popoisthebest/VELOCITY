@@ -1,0 +1,185 @@
+@import "tailwindcss";
+
+/* Custom theme tokens for Tailwind v4 */
+@theme {
+  --color-hud-bg: oklch(0.15 0.02 260 / 0.75);
+  --color-hud-text: oklch(0.95 0 0);
+  --color-hud-accent: oklch(0.7 0.2 150);
+  --color-hud-danger: oklch(0.65 0.25 25);
+  --color-hud-warning: oklch(0.75 0.15 85);
+  --font-game: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--font-game);
+  background-color: #0b0d19;
+  color: #f3f4f6;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Hide standard cursor when pointer lock is engaged */
+.pointer-locked canvas {
+  cursor: none;
+}
+
+/* Glassmorphism panel styling */
+.glass-panel {
+  background: rgba(15, 20, 35, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+/* Animations for Kill Feed */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.kill-feed-item {
+  animation: slide-in-right 0.25s ease-out forwards;
+}
+
+.kill-feed-item.fade-out {
+  animation: fade-out 0.5s ease-out forwards;
+}
+
+/* Dynamic crosshair styling */
+.crosshair-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100px;
+  height: 100px;
+}
+
+.crosshair-line {
+  position: absolute;
+  background-color: rgba(255, 255, 255, 0.85);
+  border-radius: 1px;
+}
+
+.crosshair-center {
+  width: 4px;
+  height: 4px;
+  background-color: rgba(255, 255, 255, 0.95);
+  border-radius: 50%;
+}
+
+.crosshair-top {
+  width: 2px;
+  height: 10px;
+  bottom: calc(50% + var(--spread-gap, 6px));
+}
+
+.crosshair-bottom {
+  width: 2px;
+  height: 10px;
+  top: calc(50% + var(--spread-gap, 6px));
+}
+
+.crosshair-left {
+  width: 10px;
+  height: 2px;
+  right: calc(50% + var(--spread-gap, 6px));
+}
+
+.crosshair-right {
+  width: 10px;
+  height: 2px;
+  left: calc(50% + var(--spread-gap, 6px));
+}
+
+/* Hit marker flash animation */
+@keyframes hitmarker-fade {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+}
+
+.hitmarker {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: hitmarker-fade 0.2s ease-out forwards;
+}
+
+.hitmarker::before,
+.hitmarker::after {
+  content: '';
+  position: absolute;
+  background-color: #ef4444;
+}
+
+.hitmarker-line-tl-br {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+.hitmarker-line-tl-br::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; width: 8px; height: 2px;
+  transform: rotate(45deg); transform-origin: top left;
+}
+
+.hitmarker-line-tl-br::after {
+  content: '';
+  position: absolute;
+  bottom: 0; right: 0; width: 8px; height: 2px;
+  transform: rotate(45deg); transform-origin: bottom right;
+}
+
+.hitmarker-line-tr-bl {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+.hitmarker-line-tr-bl::before {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; width: 8px; height: 2px;
+  transform: rotate(-45deg); transform-origin: top right;
+}
+
+.hitmarker-line-tr-bl::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; width: 8px; height: 2px;
+  transform: rotate(-45deg); transform-origin: bottom left;
+}
