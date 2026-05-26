@@ -42,9 +42,12 @@ export function JoinScreen() {
 
     // Dynamic websocket resolution based on environment or host
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.hostname;
-    // Default to port 3001 in dev, or co-hosted host if production
-    const defaultWsUrl = `${wsProtocol}//${host}:3001`;
+    const isLocalhost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+    const defaultWsUrl = isLocalhost
+      ? `${wsProtocol}//${window.location.hostname}:3001`
+      : `${wsProtocol}//${window.location.host}`;
     const wsUrl = (import.meta.env.VITE_WS_URL as string) || defaultWsUrl;
 
     try {

@@ -16,7 +16,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const server = createServer(app);
 
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -36,11 +36,11 @@ app.get('*', (req, res) => {
 const wsServer = new WebSocketServer(server);
 
 // Start listening
-server.listen(PORT, () => {
-  console.log(`==================================================`);
-  console.log(`[Server] Listening on http://localhost:${PORT}`);
-  console.log(`[Server] WebSocket Upgrade active`);
-  console.log(`==================================================`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log('==================================================');
+  console.log(`[Server] Listening on port ${PORT}`);
+  console.log('[Server] WebSocket Upgrade active');
+  console.log('==================================================');
 });
 
 // Graceful shutdown
