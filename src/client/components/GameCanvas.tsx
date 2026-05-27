@@ -7,6 +7,7 @@ import React, { useEffect, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useGameStore } from "../store/gameStore.js";
 import { inputManager } from "../systems/InputManager.js";
+import { getInputMode } from "../utils/device.js";
 import { predictionSystem } from "../systems/PredictionSystem.js";
 import { shootingSystem } from "../systems/ShootingSystem.js";
 import { networkClient } from "../network/NetworkClient.js";
@@ -225,16 +226,19 @@ export function GameCanvas() {
     if (canvas) {
       inputManager.setCanvas(canvas);
 
-      const onCanvasClick = () => {
-        if (!inputManager.isPointerLocked()) {
-          inputManager.requestPointerLock();
-        }
-      };
+      // Only request pointer lock on desktop-like input modes
+      if (getInputMode() === "desktop") {
+        const onCanvasClick = () => {
+          if (!inputManager.isPointerLocked()) {
+            inputManager.requestPointerLock();
+          }
+        };
 
-      canvas.addEventListener("click", onCanvasClick);
-      return () => {
-        canvas.removeEventListener("click", onCanvasClick);
-      };
+        canvas.addEventListener("click", onCanvasClick);
+        return () => {
+          canvas.removeEventListener("click", onCanvasClick);
+        };
+      }
     }
   }, []);
 

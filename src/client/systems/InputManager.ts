@@ -12,6 +12,18 @@ export class InputManager {
   private mouseDeltaX = 0;
   private mouseDeltaY = 0;
   private sensitivity = 0.002;
+  private touchSensitivity = 0.006;
+
+  // Touch / mobile input state
+  private touchMoveX = 0; // -1..1 (left/right)
+  private touchMoveY = 0; // -1..1 (forward/back)
+  private touchLookDX = 0;
+  private touchLookDY = 0;
+  private touchFire = false;
+  private touchJump = false;
+  private touchCrouch = false;
+  private touchSprint = false;
+  private touchReload = false;
 
   // Cumulative orientation (radians)
   public yaw = 0;
@@ -55,6 +67,35 @@ export class InputManager {
 
   public setCanvas(canvas: HTMLCanvasElement): void {
     this.canvasElement = canvas;
+  }
+
+  // -----------------
+  // Touch API (called by mobile UI overlay)
+  // -----------------
+  public setTouchMove(x: number, y: number): void {
+    this.touchMoveX = Math.max(-1, Math.min(1, x));
+    this.touchMoveY = Math.max(-1, Math.min(1, y));
+  }
+
+  public onTouchLook(dx: number, dy: number): void {
+    this.touchLookDX += dx;
+    this.touchLookDY += dy;
+  }
+
+  public setTouchFire(v: boolean): void {
+    this.touchFire = v;
+  }
+  public setTouchJump(v: boolean): void {
+    this.touchJump = v;
+  }
+  public setTouchCrouch(v: boolean): void {
+    this.touchCrouch = v;
+  }
+  public setTouchSprint(v: boolean): void {
+    this.touchSprint = v;
+  }
+  public setTouchReload(v: boolean): void {
+    this.touchReload = v;
   }
 
   private onKeyDown(e: KeyboardEvent): void {
@@ -133,6 +174,15 @@ export class InputManager {
     this.yaw -= this.mouseDeltaX * this.sensitivity;
     this.pitch -= this.mouseDeltaY * this.sensitivity;
 
+    // Apply touch look deltas (if any)
+    if (this.touchLookDX !== 0 || this.touchLookDY !== 0) {
+      this.yaw -= this.touchLookDX * this.touchSensitivity;
+      this.pitch -= this.touchLookDY * this.touchSensitivity;
+      // reset accumulators
+      this.touchLookDX = 0;
+      this.touchLookDY = 0;
+    }
+
     // Reset mouse accumulators
     this.mouseDeltaX = 0;
     this.mouseDeltaY = 0;
@@ -146,16 +196,39 @@ export class InputManager {
     this.yaw = ((this.yaw % twoPi) + twoPi) % twoPi;
 
     return {
-      forward: this.keys.get("KeyW") || this.keys.get("ArrowUp") || false,
-      backward: this.keys.get("KeyS") || this.keys.get("ArrowDown") || false,
-      left: this.keys.get("KeyA") || this.keys.get("ArrowLeft") || false,
-      right: this.keys.get("KeyD") || this.keys.get("ArrowRight") || false,
-      jump: this.keys.get("Space") || false,
+      forward:
+        this.keys.get("KeyW") ||
+        this.keys.get("ArrowUp") ||
+        this.touchMoveY > 0.3 ||
+        false,
+      backward:
+        this.keys.get("KeyS") ||
+        this.keys.get("ArrowDown") ||
+        this.touchMoveY < -0.3 ||
+        false,
+      left:
+        this.keys.get("KeyA") ||
+        this.keys.get("ArrowLeft") ||
+        this.touchMoveX < -0.3 ||
+        false,
+      right:
+        this.keys.get("KeyD") ||
+        this.keys.get("ArrowRight") ||
+        this.touchMoveX > 0.3 ||
+        false,
+      jump: this.keys.get("Space") || this.touchJump || false,
       sprint:
-        this.keys.get("ShiftLeft") || this.keys.get("ShiftRight") || false,
-      crouch: this.keys.get("KeyC") || this.keys.get("ControlLeft") || false,
-      shoot: this.keys.get("MouseLeft") || false, // Click handles trigger pull, holds can update this
-      reload: this.keys.get("KeyR") || false,
+        this.keys.get("ShiftLeft") ||
+        this.keys.get("ShiftRight") ||
+        this.touchSprint ||
+        false,
+      crouch:
+        this.keys.get("KeyC") ||
+        this.keys.get("ControlLeft") ||
+        this.touchCrouch ||
+        false,
+      shoot: this.keys.get("MouseLeft") || this.touchFire || false,
+      reload: this.keys.get("KeyR") || this.touchReload || false,
       yaw: this.yaw,
       pitch: this.pitch,
       sequence,

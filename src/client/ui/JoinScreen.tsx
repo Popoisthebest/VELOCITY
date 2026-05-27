@@ -9,6 +9,7 @@ import { networkClient } from "../network/NetworkClient.js";
 import { PacketType } from "@shared/protocol/index.js";
 import { WEAPONS } from "@shared/constants/index.js";
 import { inputManager } from "../systems/InputManager.js";
+import { t } from "../i18n/index.js";
 
 export function JoinScreen() {
   const [name, setName] = useState("");
@@ -27,7 +28,7 @@ export function JoinScreen() {
 
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("Nickname is required!");
+      setError(t("nicknameRequired"));
       return;
     }
     if (trimmed.length > 12) {
@@ -108,12 +109,12 @@ export function JoinScreen() {
               htmlFor="nickname"
               className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2"
             >
-              Select Nickname
+              {t("nickname")}
             </label>
             <input
               id="nickname"
               type="text"
-              placeholder="Nickname"
+              placeholder={t("nickname")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={connecting}
@@ -126,7 +127,7 @@ export function JoinScreen() {
               htmlFor="weapon"
               className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2"
             >
-              Starting Weapon
+              {t("weaponSelect")}
             </label>
             <select
               id="weapon"
@@ -147,7 +148,7 @@ export function JoinScreen() {
               htmlFor="sensitivity"
               className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2"
             >
-              Mouse Sensitivity
+              {t("sensitivity")}
             </label>
             <input
               id="sensitivity"
@@ -161,7 +162,7 @@ export function JoinScreen() {
               className="w-full accent-amber-500"
             />
             <div className="text-xs text-slate-400 mt-1">
-              {(sensitivity * 1000).toFixed(1)} sensitivity
+              {(sensitivity * 1000).toFixed(1)} {t("sensitivity")}
             </div>
           </div>
           <div>
@@ -169,7 +170,7 @@ export function JoinScreen() {
               htmlFor="volume"
               className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2"
             >
-              Volume
+              {t("volume")}
             </label>
             <input
               id="volume"
@@ -191,7 +192,7 @@ export function JoinScreen() {
               htmlFor="graphics"
               className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2"
             >
-              Graphics Quality
+              {t("graphicsQuality")}
             </label>
             <select
               id="graphics"
@@ -238,10 +239,10 @@ export function JoinScreen() {
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   />
                 </svg>
-                Connecting...
+                {t("connecting")}
               </span>
             ) : (
-              "Enter Arena"
+              t("enterArena")
             )}
           </button>
         </form>
@@ -249,7 +250,7 @@ export function JoinScreen() {
         {/* Controls Tutorial */}
         <div className="mt-8 pt-6 border-t border-slate-800/80 w-full">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">
-            Controls
+            {t("mobileControls")}
           </h3>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-slate-500">
             <div className="flex justify-between">

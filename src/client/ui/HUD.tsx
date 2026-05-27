@@ -5,6 +5,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useGameStore } from "../store/gameStore.js";
+import { t } from "../i18n/index.js";
 import { WEAPONS } from "@shared/constants/index.js";
 
 export function HUD() {
@@ -89,10 +90,10 @@ export function HUD() {
 
   const phaseLabel =
     gamePhase === "waiting"
-      ? "Waiting for players"
+      ? t("waitingForPlayers")
       : gamePhase === "ended"
-        ? "Match Complete"
-        : "Match Live";
+        ? t("matchComplete")
+        : t("matchLive");
 
   return (
     <div className="absolute inset-0 z-40 pointer-events-none font-game select-none">
@@ -104,7 +105,7 @@ export function HUD() {
           {timerMinutes}:{timerSeconds}
         </div>
         <div className="px-4 py-2 rounded-2xl bg-slate-950/75 border border-slate-800/50 text-xs uppercase tracking-[0.2em] text-slate-300 shadow-lg shadow-black/10">
-          Score: <span className="text-amber-400">{score}</span>
+          {t("score")}: <span className="text-amber-400">{score}</span>
         </div>
       </div>
 
@@ -155,7 +156,9 @@ export function HUD() {
                       transform: `translate(-50%, calc(-50% + ${yOffset}px))`,
                     }}
                   >
-                    {num.headshot ? `HEADSHOT ${num.damage}` : `-${num.damage}`}
+                    {num.headshot
+                      ? `${t("headshot")} ${num.damage}`
+                      : `-${num.damage}`}
                   </div>
                 );
               })}
@@ -198,10 +201,10 @@ export function HUD() {
             <span className="text-slate-500 font-normal">
               {item.headshot ? (
                 <span className="text-amber-400 font-extrabold text-[10px] uppercase px-1 bg-amber-500/10 rounded border border-amber-500/20">
-                  Headshot
+                  {t("headshot")}
                 </span>
               ) : (
-                "killed"
+                t("kill")
               )}
             </span>
             <span className="text-rose-400">{item.victimName}</span>
@@ -216,7 +219,7 @@ export function HUD() {
       <div className="absolute bottom-6 left-6 flex flex-col gap-1 w-64 p-4 rounded-2xl bg-slate-950/75 backdrop-blur-md border border-slate-800/50 shadow-2xl">
         <div className="flex justify-between items-baseline mb-1">
           <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">
-            Health
+            {t("health")}
           </span>
           <span className={`text-3xl font-black font-mono ${hpTextColor}`}>
             {hp}
@@ -233,7 +236,7 @@ export function HUD() {
       {/* ── Bottom-Right: Ammo & Weapon ──────────────────── */}
       <div className="absolute bottom-6 right-6 flex flex-col items-end p-4 rounded-2xl bg-slate-950/75 backdrop-blur-md border border-slate-800/50 shadow-2xl min-w-44 text-right">
         <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mb-0.5">
-          Weapon
+          {t("weaponSelect")}
         </span>
         <span className="text-lg font-black text-white tracking-wide mb-1 uppercase">
           {weaponName}
@@ -241,7 +244,7 @@ export function HUD() {
 
         {localPlayer.reloading ? (
           <span className="text-xl font-black text-amber-500 animate-pulse tracking-widest uppercase">
-            Reloading...
+            {t("reload")}...
           </span>
         ) : (
           <div className="flex items-baseline gap-1">
@@ -261,10 +264,10 @@ export function HUD() {
       {isDead && (
         <div className="absolute inset-0 bg-rose-950/45 backdrop-blur-sm flex flex-col items-center justify-center text-center">
           <h1 className="text-6xl font-black text-rose-500 tracking-widest uppercase drop-shadow-md animate-bounce">
-            YOU DIED
+            {t("youDied")}
           </h1>
           <p className="text-sm text-slate-400 mt-2 font-bold uppercase tracking-wider">
-            Respawn in{" "}
+            {t("respawning")}{" "}
             <span className="text-white font-mono text-lg font-black">
               {respawnCountdown}
             </span>
@@ -277,7 +280,7 @@ export function HUD() {
       {gamePhase === "ended" && winner && (
         <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-center text-center">
           <span className="text-amber-500 text-sm font-extrabold tracking-widest uppercase mb-1">
-            Match Complete
+            {t("matchComplete")}
           </span>
           <h1 className="text-5xl font-black text-white tracking-wider uppercase mb-2">
             {winner.nickname} Wins!
