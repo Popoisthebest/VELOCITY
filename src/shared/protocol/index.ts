@@ -1,7 +1,7 @@
 // ========================================
-// Network Protocol — Packet Schema
+// Network Protocol — Binary Packet Schema
 // Strongly-typed packets for client ↔ server communication
-// JSON serialization for MVP (upgrade to binary in Phase 6)
+// Custom binary serialization for low-latency performance
 // ========================================
 
 import type {
@@ -17,29 +17,29 @@ import type {
   WeaponType,
 } from "../types/index.js";
 
-// ── Packet Type Enum ──────────────────────────────────────
+// ── Packet Type Enum (Numeric for Binary) ────────────────
 
 export enum PacketType {
   // Client → Server
-  C_JOIN = "c_join",
-  C_INPUT = "c_input",
-  C_SHOOT = "c_shoot",
-  C_RELOAD = "c_reload",
-  C_PING = "c_ping",
+  C_JOIN = 1,
+  C_INPUT = 2,
+  C_SHOOT = 3,
+  C_RELOAD = 4,
+  C_PING = 5,
 
   // Server → Client
-  S_JOIN_ACK = "s_join_ack",
-  S_PLAYER_JOINED = "s_player_joined",
-  S_PONG = "s_pong",
-  S_PLAYER_LEFT = "s_player_left",
-  S_SNAPSHOT = "s_snapshot",
-  S_HIT_CONFIRM = "s_hit_confirm",
-  S_KILL = "s_kill",
-  S_DEATH = "s_death",
-  S_SPAWN = "s_spawn",
-  S_GAME_PHASE = "s_game_phase",
-  S_ROOM_LIST = "s_room_list",
-  S_ERROR = "s_error",
+  S_JOIN_ACK = 10,
+  S_PLAYER_JOINED = 11,
+  S_PONG = 12,
+  S_PLAYER_LEFT = 13,
+  S_SNAPSHOT = 14,
+  S_HIT_CONFIRM = 15,
+  S_KILL = 16,
+  S_DEATH = 17,
+  S_SPAWN = 18,
+  S_GAME_PHASE = 19,
+  S_ROOM_LIST = 20,
+  S_ERROR = 21,
 }
 
 // ── Client → Server Packets ──────────────────────────────
@@ -66,10 +66,12 @@ export interface ShootPacket {
 export interface ReloadPacket {
   type: PacketType.C_RELOAD;
 }
+
 export interface PingPacket {
   type: PacketType.C_PING;
   timestamp: number;
 }
+
 // ── Server → Client Packets ──────────────────────────────
 
 export interface JoinAckPacket {
@@ -160,6 +162,7 @@ export type ClientPacket =
   | ShootPacket
   | ReloadPacket
   | PingPacket;
+
 export type ServerPacket =
   | JoinAckPacket
   | PlayerJoinedPacket
@@ -176,12 +179,52 @@ export type ServerPacket =
 
 export type Packet = ClientPacket | ServerPacket;
 
-// ── Serialization ────────────────────────────────────────
+// ── Binary Serialization (Using JSON-in-Binary for complex nested types for now,
+//    but with numeric header to reduce parsing overhead for main loops) ──────────────────
 
-export function encodePacket(packet: Packet): string {
-  return JSON.stringify(packet);
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+export function encodePacket(packet: Packet): Uint8Array {
+  // Use a hybrid approach for MVP binary:
+  // [1 byte: TypeID] [JSON payload as UTF-8]
+  // This avoids full custom bit-packing for 20+ types while still giving
+  // the benefit of numeric routing and binary transport.
+
+  const jsonStr = JSON.stringify(packet);
+  const jsonBytes = textEncoder.encode(jsonStr);
+
+  const result = new Uint8Array(1 + jsonBytes.length);
+  result[0] = packet.type;
+  result.set(jsonBytes, 1);
+
+  return result;
 }
 
-export function decodePacket(data: string): Packet {
-  return JSON.parse(data) as Packet;
+export function decodePacket(data: ArrayBuffer | Uint8Array | string): Packet {
+  let bytes: Uint8Array;
+
+  if (typeof data === "string") {
+    // Fallback for legacy JSON strings
+    return JSON.parse(data) as Packet;
+  }
+
+  if (data instanceof ArrayBuffer) {
+    bytes = new Uint8Array(data);
+  } else {
+    bytes = data;
+  }
+
+  const type = bytes[0] as PacketType;
+  const jsonBytes = bytes.subarray(1);
+  const jsonStr = textDecoder.decode(jsonBytes);
+
+  try {
+    const packet = JSON.parse(jsonStr) as Packet;
+    packet.type = type; // Ensure type is correct numeric
+    return packet;
+  } catch (e) {
+    console.error("Failed to decode packet:", e);
+    throw e;
+  }
 }

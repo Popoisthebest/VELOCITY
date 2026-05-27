@@ -175,6 +175,17 @@ export class Room {
     const shooter = this.players.get(playerId);
     if (!shooter || !shooter.state.alive || shooter.state.reloading) return;
 
+    // --- Anti-cheat: Origin verification ---
+    // Check if the shot origin is too far from the player's authoritative position (e.g., > 3.0 meters)
+    const distFromPlayer = vec3Distance(origin, shooter.state.position);
+    if (distFromPlayer > 3.0) {
+      console.warn(
+        `[Anti-Cheat] Player ${shooter.state.nickname} (${playerId}) shot from invalid origin. Distance: ${distFromPlayer.toFixed(2)}m`,
+      );
+      // Optional: Flag player or reject shot
+      return;
+    }
+
     const now = Date.now();
     if (!shooter.canShoot(now)) return;
 

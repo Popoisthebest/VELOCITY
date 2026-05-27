@@ -3,12 +3,16 @@
 // Stateless utility functions for shot verification
 // ========================================
 
-import type { Vec3, AABB, PlayerState } from '../../shared/types/index.js';
-import type { WeaponConfig } from '../../shared/constants/index.js';
-import { raycastPlayer, raycastMap } from '../../shared/physics/collision.js';
-import { vec3Distance, vec3Normalize } from '../../shared/physics/movement.js';
-import { HEADSHOT_MULTIPLIER, PLAYER_EYE_OFFSET, PLAYER_HEIGHT } from '../../shared/constants/index.js';
-import type { PlayerEntity } from './PlayerEntity.js';
+import type { Vec3, AABB, PlayerState } from "../../shared/types/index.js";
+import type { WeaponConfig } from "../../shared/constants/index.js";
+import { raycastPlayer, raycastMap } from "../../shared/physics/collision.js";
+import { vec3Distance, vec3Normalize } from "../../shared/physics/movement.js";
+import {
+  HEADSHOT_MULTIPLIER,
+  PLAYER_EYE_OFFSET,
+  PLAYER_HEIGHT,
+} from "../../shared/constants/index.js";
+import type { PlayerEntity } from "./PlayerEntity.js";
 
 export interface HitResult {
   targetId: string;
@@ -33,7 +37,9 @@ export function calculateDamage(
     if (distance >= weaponConfig.falloffEnd) {
       damage = weaponConfig.minDamage;
     } else {
-      const t = (distance - weaponConfig.falloffStart) / (weaponConfig.falloffEnd - weaponConfig.falloffStart);
+      const t =
+        (distance - weaponConfig.falloffStart) /
+        (weaponConfig.falloffEnd - weaponConfig.falloffStart);
       damage = baseDamage + (weaponConfig.minDamage - baseDamage) * t;
     }
   }
@@ -54,9 +60,13 @@ function applySpread(direction: Vec3, spread: number): Vec3 {
   const radius = Math.random() * spread;
 
   // Create perpendicular vectors
-  let upX = 0, upY = 1, upZ = 0;
+  let upX = 0,
+    upY = 1,
+    upZ = 0;
   if (Math.abs(direction.y) > 0.9) {
-    upX = 1; upY = 0; upZ = 0;
+    upX = 1;
+    upY = 0;
+    upZ = 0;
   }
 
   // Cross product: direction × up = right
@@ -70,9 +80,15 @@ function applySpread(direction: Vec3, spread: number): Vec3 {
   const aUpY = (rightZ / rLen) * direction.x - (rightX / rLen) * direction.z;
   const aUpZ = (rightX / rLen) * direction.y - (rightY / rLen) * direction.x;
 
-  const offsetX = (rightX / rLen) * Math.cos(angle) * radius + aUpX * Math.sin(angle) * radius;
-  const offsetY = (rightY / rLen) * Math.cos(angle) * radius + aUpY * Math.sin(angle) * radius;
-  const offsetZ = (rightZ / rLen) * Math.cos(angle) * radius + aUpZ * Math.sin(angle) * radius;
+  const offsetX =
+    (rightX / rLen) * Math.cos(angle) * radius +
+    aUpX * Math.sin(angle) * radius;
+  const offsetY =
+    (rightY / rLen) * Math.cos(angle) * radius +
+    aUpY * Math.sin(angle) * radius;
+  const offsetZ =
+    (rightZ / rLen) * Math.cos(angle) * radius +
+    aUpZ * Math.sin(angle) * radius;
 
   return vec3Normalize({
     x: direction.x + offsetX,
@@ -99,7 +115,7 @@ export function validateShot(
   // Anti-cheat: verify origin is near shooter's actual eye position
   const eyePos: Vec3 = {
     x: shooter.state.position.x,
-    y: shooter.state.position.y + (PLAYER_HEIGHT / 2) + PLAYER_EYE_OFFSET,
+    y: shooter.state.position.y + PLAYER_HEIGHT / 2 + PLAYER_EYE_OFFSET,
     z: shooter.state.position.z,
   };
 
@@ -118,16 +134,27 @@ export function validateShot(
 
   for (let p = 0; p < pelletCount; p++) {
     // Apply spread
-    const spreadDir = pelletCount > 1 || weaponConfig.spread > 0
-      ? applySpread(direction, weaponConfig.spread)
-      : direction;
+    const spreadDir =
+      pelletCount > 1 || weaponConfig.spread > 0
+        ? applySpread(direction, weaponConfig.spread)
+        : direction;
 
     // Check wall hit distance first
-    const wallHit = raycastMap(authOrigin, spreadDir, mapBoxes, weaponConfig.range);
+    const wallHit = raycastMap(
+      authOrigin,
+      spreadDir,
+      mapBoxes,
+      weaponConfig.range,
+    );
     const maxDist = wallHit ? wallHit.distance : weaponConfig.range;
 
     // Check all alive players
-    let closestHit: { targetId: string; distance: number; point: Vec3; headshot: boolean } | null = null;
+    let closestHit: {
+      targetId: string;
+      distance: number;
+      point: Vec3;
+      headshot: boolean;
+    } | null = null;
 
     for (const [playerId, entity] of players) {
       if (playerId === shooterId) continue;
@@ -160,7 +187,7 @@ export function validateShot(
       );
 
       // Check if we already hit this player (multiple pellets)
-      const existing = hits.find(h => h.targetId === closestHit!.targetId);
+      const existing = hits.find((h) => h.targetId === closestHit!.targetId);
       if (existing) {
         existing.damage += damage;
         existing.headshot = existing.headshot || closestHit.headshot;

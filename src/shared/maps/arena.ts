@@ -4,7 +4,7 @@
 // Provides both collision geometry and spawn points
 // ========================================
 
-import type { MapData, AABB, SpawnPoint } from '../types/index.js';
+import type { MapData, AABB, SpawnPoint } from "../types/index.js";
 
 /**
  * Compact arena with verticality and cover.
@@ -37,10 +37,10 @@ const boxes: AABB[] = [
   { min: { x: -32, y: -1, z: -32 }, max: { x: 32, y: 0, z: 32 } },
 
   // ── Perimeter Walls (2 units thick, 8 units tall) ──
-  { min: { x: -32, y: 0, z: -32 }, max: { x: 32, y: 8, z: -30 } },   // North
-  { min: { x: -32, y: 0, z: 30 }, max: { x: 32, y: 8, z: 32 } },     // South
-  { min: { x: 30, y: 0, z: -32 }, max: { x: 32, y: 8, z: 32 } },     // East
-  { min: { x: -32, y: 0, z: -32 }, max: { x: -30, y: 8, z: 32 } },   // West
+  { min: { x: -32, y: 0, z: -32 }, max: { x: 32, y: 8, z: -30 } }, // North
+  { min: { x: -32, y: 0, z: 30 }, max: { x: 32, y: 8, z: 32 } }, // South
+  { min: { x: 30, y: 0, z: -32 }, max: { x: 32, y: 8, z: 32 } }, // East
+  { min: { x: -32, y: 0, z: -32 }, max: { x: -30, y: 8, z: 32 } }, // West
 
   // ── Central Tower (4x4x5) ───────────────────────
   { min: { x: -2, y: 0, z: -2 }, max: { x: 2, y: 5, z: 2 } },
@@ -86,18 +86,36 @@ const boxes: AABB[] = [
 
 const spawnPoints: SpawnPoint[] = [
   // Spread around the perimeter, facing center
-  { position: { x: -25, y: 0, z: -25 }, rotation: { yaw: Math.PI / 4, pitch: 0 } },
-  { position: { x: 25, y: 0, z: -25 }, rotation: { yaw: -Math.PI / 4 + Math.PI, pitch: 0 } },
-  { position: { x: -25, y: 0, z: 25 }, rotation: { yaw: -Math.PI / 4, pitch: 0 } },
-  { position: { x: 25, y: 0, z: 25 }, rotation: { yaw: Math.PI / 4 + Math.PI, pitch: 0 } },
+  {
+    position: { x: -25, y: 0, z: -25 },
+    rotation: { yaw: Math.PI / 4, pitch: 0 },
+  },
+  {
+    position: { x: 25, y: 0, z: -25 },
+    rotation: { yaw: -Math.PI / 4 + Math.PI, pitch: 0 },
+  },
+  {
+    position: { x: -25, y: 0, z: 25 },
+    rotation: { yaw: -Math.PI / 4, pitch: 0 },
+  },
+  {
+    position: { x: 25, y: 0, z: 25 },
+    rotation: { yaw: Math.PI / 4 + Math.PI, pitch: 0 },
+  },
   { position: { x: 0, y: 0, z: -25 }, rotation: { yaw: 0, pitch: 0 } },
   { position: { x: 0, y: 0, z: 25 }, rotation: { yaw: Math.PI, pitch: 0 } },
-  { position: { x: -25, y: 0, z: 0 }, rotation: { yaw: Math.PI / 2, pitch: 0 } },
-  { position: { x: 25, y: 0, z: 0 }, rotation: { yaw: -Math.PI / 2, pitch: 0 } },
+  {
+    position: { x: -25, y: 0, z: 0 },
+    rotation: { yaw: Math.PI / 2, pitch: 0 },
+  },
+  {
+    position: { x: 25, y: 0, z: 0 },
+    rotation: { yaw: -Math.PI / 2, pitch: 0 },
+  },
 ];
 
 export const ARENA_MAP: MapData = {
-  name: 'Arena',
+  name: "Arena",
   boxes,
   spawnPoints,
   bounds: {

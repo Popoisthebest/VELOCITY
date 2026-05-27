@@ -3,13 +3,17 @@
 // Renders other players as 3D capsules with nametags, health bars, and smooth frame interpolation
 // ========================================
 
-import React, { useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
-import { Html } from '@react-three/drei';
-import { interpolationSystem } from '../systems/InterpolationSystem.js';
-import { PLAYER_HEIGHT, PLAYER_CROUCH_HEIGHT, PLAYER_RADIUS } from '@shared/constants/index.js';
-import { useGameStore } from '../store/gameStore.js';
-import * as THREE from 'three';
+import React, { useRef } from "react";
+import { useFrame } from "@react-three/fiber";
+import { Html } from "@react-three/drei";
+import { interpolationSystem } from "../systems/InterpolationSystem.js";
+import {
+  PLAYER_HEIGHT,
+  PLAYER_CROUCH_HEIGHT,
+  PLAYER_RADIUS,
+} from "@shared/constants/index.js";
+import { useGameStore } from "../store/gameStore.js";
+import * as THREE from "three";
 
 interface RemotePlayerProps {
   id: string;
@@ -17,12 +21,12 @@ interface RemotePlayerProps {
 
 function getPlayerColor(id: string): string {
   const colors = [
-    '#3b82f6', // blue
-    '#10b981', // green
-    '#ec4899', // pink
-    '#8b5cf6', // purple
-    '#f59e0b', // amber
-    '#06b6d4', // cyan
+    "#3b82f6", // blue
+    "#10b981", // green
+    "#ec4899", // pink
+    "#8b5cf6", // purple
+    "#f59e0b", // amber
+    "#06b6d4", // cyan
   ];
   let hash = 0;
   for (let i = 0; i < id.length; i++) {
@@ -37,7 +41,7 @@ export function RemotePlayer({ id }: RemotePlayerProps) {
   const color = getPlayerColor(id);
 
   // Subscribe to local health/alive state to render nameplates
-  const playerState = useGameStore(state => state.remotePlayers.get(id));
+  const playerState = useGameStore((state) => state.remotePlayers.get(id));
 
   useFrame(() => {
     if (!groupRef.current) return;
@@ -48,7 +52,11 @@ export function RemotePlayer({ id }: RemotePlayerProps) {
 
     if (interp) {
       // 1. Update overall group position
-      groupRef.current.position.set(interp.position.x, interp.position.y, interp.position.z);
+      groupRef.current.position.set(
+        interp.position.x,
+        interp.position.y,
+        interp.position.z,
+      );
 
       // 2. Update mesh rotation
       groupRef.current.rotation.y = interp.rotation.yaw;
@@ -56,7 +64,11 @@ export function RemotePlayer({ id }: RemotePlayerProps) {
       // 3. Handle crouch scaling dynamically
       if (capsuleRef.current) {
         const height = interp.crouching ? PLAYER_CROUCH_HEIGHT : PLAYER_HEIGHT;
-        capsuleRef.current.scale.set(1, interp.crouching ? (PLAYER_CROUCH_HEIGHT / PLAYER_HEIGHT) : 1.0, 1);
+        capsuleRef.current.scale.set(
+          1,
+          interp.crouching ? PLAYER_CROUCH_HEIGHT / PLAYER_HEIGHT : 1.0,
+          1,
+        );
         capsuleRef.current.position.y = height / 2;
       }
 
@@ -64,7 +76,11 @@ export function RemotePlayer({ id }: RemotePlayerProps) {
       groupRef.current.visible = interp.alive;
     } else if (playerState) {
       // Fallback to last known store state
-      groupRef.current.position.set(playerState.position.x, playerState.position.y, playerState.position.z);
+      groupRef.current.position.set(
+        playerState.position.x,
+        playerState.position.y,
+        playerState.position.z,
+      );
       groupRef.current.rotation.y = playerState.rotation.yaw;
       groupRef.current.visible = playerState.alive;
     }
@@ -76,7 +92,9 @@ export function RemotePlayer({ id }: RemotePlayerProps) {
     <group ref={groupRef}>
       {/* 3D Capsule Hitbox / Body */}
       <mesh ref={capsuleRef}>
-        <capsuleGeometry args={[PLAYER_RADIUS, PLAYER_HEIGHT - PLAYER_RADIUS * 2, 8, 16]} />
+        <capsuleGeometry
+          args={[PLAYER_RADIUS, PLAYER_HEIGHT - PLAYER_RADIUS * 2, 8, 16]}
+        />
         <meshStandardMaterial
           color={color}
           roughness={0.4}

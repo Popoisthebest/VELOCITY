@@ -26,24 +26,29 @@ export function HUD() {
   const [restartCountdown, setRestartCountdown] = useState(5);
 
   useEffect(() => {
+    let timer: NodeJS.Timeout;
     if (isDead) {
       setRespawnCountdown(3);
-      const timer = setInterval(() => {
+      timer = setInterval(() => {
         setRespawnCountdown((c) => Math.max(c - 1, 0));
       }, 1000);
-      return () => clearInterval(timer);
     }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
   }, [isDead]);
 
   useEffect(() => {
+    let timer: NodeJS.Timeout;
     if (gamePhase === "ended") {
       setRestartCountdown(5);
-      const timer = setInterval(() => {
+      timer = setInterval(() => {
         setRestartCountdown((c) => Math.max(c - 1, 0));
       }, 1000);
-      return () => clearInterval(timer);
     }
-    return undefined;
+    return () => {
+      if (timer) clearInterval(timer);
+    };
   }, [gamePhase]);
 
   if (!localPlayer) return null;
@@ -76,9 +81,11 @@ export function HUD() {
   const weaponConfig = WEAPONS[localPlayer.weapon];
   const weaponName = weaponConfig ? weaponConfig.name : "Unknown";
   const score = localPlayer.score;
-  const now = Date.now();
+  
+  // Use a stable timestamp for rendering damage numbers to avoid purity warnings
+  const renderTimestamp = Date.now();
   const protectionRemaining = Math.max(
-    localPlayer.spawnProtectionUntil - now,
+    localPlayer.spawnProtectionUntil - renderTimestamp,
     0,
   );
 
@@ -143,7 +150,7 @@ export function HUD() {
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
             <div className="relative w-full h-full">
               {damageNumbers.map((num) => {
-                const age = (Date.now() - num.createdAt) / 1000;
+                const age = (renderTimestamp - num.createdAt) / 1000;
                 if (age > 1) return null;
                 const opacity = 1 - age;
                 const yOffset = -age * 40;

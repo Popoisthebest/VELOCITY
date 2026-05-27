@@ -3,10 +3,10 @@
 // Triggers shots, calculates fire-rates, and applies camera recoil kick
 // ========================================
 
-import type { PlayerState, Vec3 } from '@shared/types/index.js';
-import type { WeaponConfig } from '@shared/constants/index.js';
-import { inputManager } from './InputManager.js';
-import * as THREE from 'three';
+import type { PlayerState, Vec3 } from "@shared/types/index.js";
+import type { WeaponConfig } from "@shared/constants/index.js";
+import { inputManager } from "./InputManager.js";
+import * as THREE from "three";
 
 export class ShootingSystem {
   private lastFireTime = 0;
@@ -44,13 +44,18 @@ export class ShootingSystem {
 
     // Apply visual recoil to the input manager orientation
     const recoilPitchKick = weaponConfig.recoil;
-    const recoilYawKick = (Math.random() - 0.5) * weaponConfig.recoilHorizontal * 2;
+    const recoilYawKick =
+      (Math.random() - 0.5) * weaponConfig.recoilHorizontal * 2;
 
     inputManager.applyRecoil(recoilPitchKick, recoilYawKick);
 
     return {
       origin: { x: origin.x, y: origin.y, z: origin.z },
-      direction: { x: spreadDirection.x, y: spreadDirection.y, z: spreadDirection.z },
+      direction: {
+        x: spreadDirection.x,
+        y: spreadDirection.y,
+        z: spreadDirection.z,
+      },
     };
   }
 
@@ -69,7 +74,9 @@ export class ShootingSystem {
     }
 
     right.crossVectors(direction, up).normalize();
-    const actualUp = new THREE.Vector3().crossVectors(right, direction).normalize();
+    const actualUp = new THREE.Vector3()
+      .crossVectors(right, direction)
+      .normalize();
 
     const offset = new THREE.Vector3()
       .addScaledVector(right, Math.cos(angle) * radius)

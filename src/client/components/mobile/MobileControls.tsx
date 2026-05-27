@@ -15,7 +15,7 @@ function shouldForceTouch(): boolean {
 
 export function MobileControls() {
   const mode = getInputMode();
-  if (mode !== "touch" && !shouldForceTouch()) return null;
+  const isTouch = mode === "touch" || shouldForceTouch();
 
   const onMove = useCallback((x: number, y: number) => {
     inputManager.setTouchMove(x, y);
@@ -24,6 +24,8 @@ export function MobileControls() {
   // Look area handling using pointer events
   const lookPointerId = useRef<number | null>(null);
   const lastLook = useRef({ x: 0, y: 0 });
+
+  if (!isTouch) return null;
 
   const onLookPointerDown = (e: React.PointerEvent) => {
     // only start if right half

@@ -45,10 +45,9 @@ export class WebSocketServer {
 
     console.log(`[WebSocketServer] Client connected: ${playerId}`);
 
-    ws.on("message", (message: string) => {
+    ws.on("message", (message: Buffer | ArrayBuffer | Uint8Array) => {
       try {
-        const rawPacket = message.toString();
-        const packet = decodePacket(rawPacket) as ClientPacket;
+        const packet = decodePacket(message as Uint8Array) as ClientPacket;
         this.handlePacket(playerId, packet);
       } catch (err) {
         console.error(

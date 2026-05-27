@@ -60,6 +60,7 @@ export class NetworkClient {
     if (!this.ws) return;
 
     this.ws.onopen = () => {
+      if (this.ws) this.ws.binaryType = "arraybuffer";
       console.log("[NetworkClient] Connected to server");
       this.isConnecting = false;
       this.reconnectDelay = 1000;
@@ -71,7 +72,7 @@ export class NetworkClient {
 
     this.ws.onmessage = (event) => {
       try {
-        const packet = decodePacket(event.data.toString()) as ServerPacket;
+        const packet = decodePacket(event.data) as ServerPacket;
         this.handlePacket(packet);
       } catch (err) {
         console.error("[NetworkClient] Error decoding packet:", err);

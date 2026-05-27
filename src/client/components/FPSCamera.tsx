@@ -3,17 +3,20 @@
 // Manages viewport orientation, eye position, weapon bobbing, and recoil recovery
 // ========================================
 
-import React, { useRef } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
-import { useGameStore } from '../store/gameStore.js';
-import { inputManager } from '../systems/InputManager.js';
-import { PLAYER_HEIGHT, PLAYER_CROUCH_HEIGHT } from '@shared/constants/index.js';
-import * as THREE from 'three';
+import React, { useRef } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import { useGameStore } from "../store/gameStore.js";
+import { inputManager } from "../systems/InputManager.js";
+import {
+  PLAYER_HEIGHT,
+  PLAYER_CROUCH_HEIGHT,
+} from "@shared/constants/index.js";
+import * as THREE from "three";
 
 export function FPSCamera() {
   const { camera } = useThree();
-  const localPlayer = useGameStore(state => state.localPlayer);
-  const isDead = useGameStore(state => state.isDead);
+  const localPlayer = useGameStore((state) => state.localPlayer);
+  const isDead = useGameStore((state) => state.isDead);
 
   // Bobbing variables
   const bobTime = useRef(0);
@@ -32,17 +35,19 @@ export function FPSCamera() {
     // 1. Calculate eye height
     const targetEyeHeight = crouching
       ? PLAYER_CROUCH_HEIGHT - 0.1 // ~0.9
-      : PLAYER_HEIGHT - 0.2;       // ~1.6
+      : PLAYER_HEIGHT - 0.2; // ~1.6
 
     // Smoothly lerp camera height when crouching/standing
     const currentEyeY = THREE.MathUtils.lerp(
       camera.position.y - position.y,
       targetEyeHeight,
-      Math.min(delta * 15, 1.0)
+      Math.min(delta * 15, 1.0),
     );
 
     // 2. Weapon Bobbing (only on ground and moving)
-    const horizSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+    const horizSpeed = Math.sqrt(
+      velocity.x * velocity.x + velocity.z * velocity.z,
+    );
     if (grounded && horizSpeed > 0.1) {
       // Frequency matches speed
       bobTime.current += delta * horizSpeed * 2.0;
@@ -55,25 +60,37 @@ export function FPSCamera() {
       currentBobX.current = Math.cos(bobTime.current) * bobAmpX;
     } else {
       // Decay bobbing back to 0
-      currentBobY.current = THREE.MathUtils.lerp(currentBobY.current, 0, delta * 10);
-      currentBobX.current = THREE.MathUtils.lerp(currentBobX.current, 0, delta * 10);
+      currentBobY.current = THREE.MathUtils.lerp(
+        currentBobY.current,
+        0,
+        delta * 10,
+      );
+      currentBobX.current = THREE.MathUtils.lerp(
+        currentBobX.current,
+        0,
+        delta * 10,
+      );
       bobTime.current = 0;
     }
 
     // 3. Visual Recoil decay (spring system)
     // Lerp visual recoil back to 0 quickly
-    visualRecoilY.current = THREE.MathUtils.lerp(visualRecoilY.current, 0, delta * 12);
+    visualRecoilY.current = THREE.MathUtils.lerp(
+      visualRecoilY.current,
+      0,
+      delta * 12,
+    );
 
     // Apply translation to camera position (eye height + bobbing)
     camera.position.set(
       position.x + currentBobX.current,
       position.y + currentEyeY + currentBobY.current,
-      position.z
+      position.z,
     );
 
     // 4. Camera Rotation
     // Apply yaw and pitch directly from the input manager
-    const targetRotation = new THREE.Euler(0, 0, 0, 'YXZ');
+    const targetRotation = new THREE.Euler(0, 0, 0, "YXZ");
     targetRotation.x = inputManager.pitch + visualRecoilY.current;
     targetRotation.y = inputManager.yaw;
     camera.quaternion.setFromEuler(targetRotation);

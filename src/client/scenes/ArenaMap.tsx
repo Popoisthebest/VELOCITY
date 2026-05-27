@@ -3,51 +3,55 @@
 // Renders static map boxes with premium cyberpunk styling and grid overlays
 // ========================================
 
-import React from 'react';
-import { ARENA_MAP } from '@shared/maps/arena.js';
-import type { AABB } from '@shared/types/index.js';
-import { Edges, Grid } from '@react-three/drei';
+import React from "react";
+import { ARENA_MAP } from "@shared/maps/arena.js";
+import type { AABB } from "@shared/types/index.js";
+import { Edges, Grid } from "@react-three/drei";
 
-function getBoxMaterialProps(index: number): { color: string; roughness: number; metalness: number } {
+function getBoxMaterialProps(index: number): {
+  color: string;
+  roughness: number;
+  metalness: number;
+} {
   // Classification based on index in ARENA_MAP.boxes array
   if (index === 0) {
     // Floor
-    return { color: '#181b30', roughness: 0.8, metalness: 0.1 };
+    return { color: "#181b30", roughness: 0.8, metalness: 0.1 };
   }
   if (index >= 1 && index <= 4) {
     // Perimeter Walls
-    return { color: '#222642', roughness: 0.7, metalness: 0.2 };
+    return { color: "#222642", roughness: 0.7, metalness: 0.2 };
   }
   if (index === 5) {
     // Central Tower
-    return { color: '#7c2a35', roughness: 0.6, metalness: 0.4 };
+    return { color: "#7c2a35", roughness: 0.6, metalness: 0.4 };
   }
   if (index >= 6 && index <= 9) {
     // Low Cover Blocks
-    return { color: '#d98236', roughness: 0.5, metalness: 0.1 };
+    return { color: "#d98236", roughness: 0.5, metalness: 0.1 };
   }
   if (index >= 10 && index <= 11) {
     // Large Cover Blocks
-    return { color: '#d95332', roughness: 0.5, metalness: 0.1 };
+    return { color: "#d95332", roughness: 0.5, metalness: 0.1 };
   }
   if (index === 12 || index === 15) {
     // Platforms NE / SW
-    return { color: '#2a727a', roughness: 0.5, metalness: 0.3 };
+    return { color: "#2a727a", roughness: 0.5, metalness: 0.3 };
   }
   if ((index >= 13 && index <= 14) || (index >= 16 && index <= 17)) {
     // Steps NE / SW
-    return { color: '#3b526d', roughness: 0.6, metalness: 0.2 };
+    return { color: "#3b526d", roughness: 0.6, metalness: 0.2 };
   }
   if (index >= 18 && index <= 19) {
     // Jump Blocks
-    return { color: '#275ca3', roughness: 0.4, metalness: 0.4 };
+    return { color: "#275ca3", roughness: 0.4, metalness: 0.4 };
   }
   if (index >= 20 && index <= 21) {
     // Small Crates
-    return { color: '#7d532c', roughness: 0.9, metalness: 0.0 };
+    return { color: "#7d532c", roughness: 0.9, metalness: 0.0 };
   }
   // Mid-height walls / Sight walls
-  return { color: '#475569', roughness: 0.7, metalness: 0.2 };
+  return { color: "#475569", roughness: 0.7, metalness: 0.2 };
 }
 
 export const ArenaMap = React.memo(() => {
@@ -92,10 +96,7 @@ export const ArenaMap = React.memo(() => {
               flatShading
             />
             {/* Outline wireframe edges for definition */}
-            <Edges
-              threshold={15}
-              color={index === 0 ? '#1f2438' : '#2d335c'}
-            />
+            <Edges threshold={15} color={index === 0 ? "#1f2438" : "#2d335c"} />
           </mesh>
         );
       })}
@@ -103,4 +104,4 @@ export const ArenaMap = React.memo(() => {
   );
 });
 
-ArenaMap.displayName = 'ArenaMap';
+ArenaMap.displayName = "ArenaMap";

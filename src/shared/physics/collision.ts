@@ -4,20 +4,23 @@
 // Used by BOTH client and server
 // ========================================
 
-import type { Vec3, AABB } from '../types/index.js';
+import type { Vec3, AABB } from "../types/index.js";
 import {
   PLAYER_RADIUS,
   PLAYER_HEIGHT,
   PLAYER_CROUCH_HEIGHT,
-} from '../constants/index.js';
+} from "../constants/index.js";
 
 // ── AABB Helpers ─────────────────────────────────────────
 
 export function aabbOverlaps(a: AABB, b: AABB): boolean {
   return (
-    a.min.x < b.max.x && a.max.x > b.min.x &&
-    a.min.y < b.max.y && a.max.y > b.min.y &&
-    a.min.z < b.max.z && a.max.z > b.min.z
+    a.min.x < b.max.x &&
+    a.max.x > b.min.x &&
+    a.min.y < b.max.y &&
+    a.max.y > b.min.y &&
+    a.min.z < b.max.z &&
+    a.max.z > b.min.z
   );
 }
 
@@ -175,8 +178,16 @@ export function raycastAABB(
     let t1 = (box.min.x - origin.x) / direction.x;
     let t2 = (box.max.x - origin.x) / direction.x;
     let n = -1;
-    if (t1 > t2) { [t1, t2] = [t2, t1]; n = 1; }
-    if (t1 > tmin) { tmin = t1; normal.x = n; normal.y = 0; normal.z = 0; }
+    if (t1 > t2) {
+      [t1, t2] = [t2, t1];
+      n = 1;
+    }
+    if (t1 > tmin) {
+      tmin = t1;
+      normal.x = n;
+      normal.y = 0;
+      normal.z = 0;
+    }
     if (t2 < tmax) tmax = t2;
     if (tmin > tmax) return null;
   }
@@ -188,8 +199,16 @@ export function raycastAABB(
     let t1 = (box.min.y - origin.y) / direction.y;
     let t2 = (box.max.y - origin.y) / direction.y;
     let n = -1;
-    if (t1 > t2) { [t1, t2] = [t2, t1]; n = 1; }
-    if (t1 > tmin) { tmin = t1; normal.x = 0; normal.y = n; normal.z = 0; }
+    if (t1 > t2) {
+      [t1, t2] = [t2, t1];
+      n = 1;
+    }
+    if (t1 > tmin) {
+      tmin = t1;
+      normal.x = 0;
+      normal.y = n;
+      normal.z = 0;
+    }
     if (t2 < tmax) tmax = t2;
     if (tmin > tmax) return null;
   }
@@ -201,8 +220,16 @@ export function raycastAABB(
     let t1 = (box.min.z - origin.z) / direction.z;
     let t2 = (box.max.z - origin.z) / direction.z;
     let n = -1;
-    if (t1 > t2) { [t1, t2] = [t2, t1]; n = 1; }
-    if (t1 > tmin) { tmin = t1; normal.x = 0; normal.y = 0; normal.z = n; }
+    if (t1 > t2) {
+      [t1, t2] = [t2, t1];
+      n = 1;
+    }
+    if (t1 > tmin) {
+      tmin = t1;
+      normal.x = 0;
+      normal.y = 0;
+      normal.z = n;
+    }
     if (t2 < tmax) tmax = t2;
     if (tmin > tmax) return null;
   }

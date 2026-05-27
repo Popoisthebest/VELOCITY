@@ -3,8 +3,8 @@
 // Buffers server updates and interpolates positions/rotations
 // ========================================
 
-import type { PlayerState, Vec3 } from '@shared/types/index.js';
-import { INTERPOLATION_DELAY } from '@shared/constants/index.js';
+import type { PlayerState, Vec3 } from "@shared/types/index.js";
+import { INTERPOLATION_DELAY } from "@shared/constants/index.js";
 
 interface Snapshot {
   timestamp: number;
@@ -15,7 +15,11 @@ export class InterpolationSystem {
   private buffers = new Map<string, Snapshot[]>();
   private readonly maxBufferSize = 10; // keep a bit more than 3 for safety during network jitter
 
-  public addSnapshot(playerId: string, state: PlayerState, timestamp: number): void {
+  public addSnapshot(
+    playerId: string,
+    state: PlayerState,
+    timestamp: number,
+  ): void {
     if (!this.buffers.has(playerId)) {
       this.buffers.set(playerId, []);
     }
@@ -36,7 +40,10 @@ export class InterpolationSystem {
     this.buffers.delete(playerId);
   }
 
-  public getInterpolatedState(playerId: string, renderTime: number): PlayerState | null {
+  public getInterpolatedState(
+    playerId: string,
+    renderTime: number,
+  ): PlayerState | null {
     const buffer = this.buffers.get(playerId);
     if (!buffer || buffer.length === 0) return null;
 
@@ -58,7 +65,10 @@ export class InterpolationSystem {
     // Find the two snapshots bracketing renderTime
     let targetIndex = -1;
     for (let i = 0; i < buffer.length - 1; i++) {
-      if (renderTime >= buffer[i].timestamp && renderTime <= buffer[i + 1].timestamp) {
+      if (
+        renderTime >= buffer[i].timestamp &&
+        renderTime <= buffer[i + 1].timestamp
+      ) {
         targetIndex = i;
         break;
       }
@@ -80,15 +90,31 @@ export class InterpolationSystem {
     const interpolated = { ...right.state };
 
     // Lerp position
-    interpolated.position = this.lerpVec3(left.state.position, right.state.position, factor);
+    interpolated.position = this.lerpVec3(
+      left.state.position,
+      right.state.position,
+      factor,
+    );
 
     // Lerp velocity
-    interpolated.velocity = this.lerpVec3(left.state.velocity, right.state.velocity, factor);
+    interpolated.velocity = this.lerpVec3(
+      left.state.velocity,
+      right.state.velocity,
+      factor,
+    );
 
     // Lerp rotation (yaw / pitch)
     interpolated.rotation = {
-      yaw: this.lerpAngle(left.state.rotation.yaw, right.state.rotation.yaw, factor),
-      pitch: this.lerpAngle(left.state.rotation.pitch, right.state.rotation.pitch, factor),
+      yaw: this.lerpAngle(
+        left.state.rotation.yaw,
+        right.state.rotation.yaw,
+        factor,
+      ),
+      pitch: this.lerpAngle(
+        left.state.rotation.pitch,
+        right.state.rotation.pitch,
+        factor,
+      ),
     };
 
     // Keep discrete values from the right (newest) frame
@@ -121,7 +147,7 @@ export class InterpolationSystem {
     // Wrap to [-PI, PI]
     const pi = Math.PI;
     const twoPi = pi * 2;
-    diff = ((diff + pi) % twoPi + twoPi) % twoPi - pi;
+    diff = ((((diff + pi) % twoPi) + twoPi) % twoPi) - pi;
     return start + diff * t;
   }
 

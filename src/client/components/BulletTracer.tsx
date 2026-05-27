@@ -3,10 +3,10 @@
 // High-performance pre-allocated object pool for visual combat FX
 // ========================================
 
-import React, { useEffect, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
-import type { Vec3 } from '@shared/types/index.js';
-import * as THREE from 'three';
+import React, { useEffect, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
+import type { Vec3 } from "@shared/types/index.js";
+import * as THREE from "three";
 
 interface TracerFX {
   origin: THREE.Vector3;
@@ -88,7 +88,9 @@ export function BulletTracers() {
           } else {
             mesh.visible = true;
             // Update points in buffer geometry
-            const posAttr = mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+            const posAttr = mesh.geometry.getAttribute(
+              "position",
+            ) as THREE.BufferAttribute;
             posAttr.setXYZ(0, data.origin.x, data.origin.y, data.origin.z);
             posAttr.setXYZ(1, data.target.x, data.target.y, data.target.z);
             posAttr.needsUpdate = true;
@@ -140,12 +142,14 @@ export function BulletTracers() {
         // Pre-allocate buffer geometries
         const geom = new THREE.BufferGeometry();
         const positions = new Float32Array(6); // 2 points * 3 components
-        geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
 
         return (
           <line
             key={`t_${i}`}
-            ref={(el) => { tracerMeshes.current[i] = el; }}
+            ref={(el) => {
+              tracerMeshes.current[i] = el;
+            }}
             geometry={geom}
           >
             <lineBasicMaterial
@@ -162,7 +166,9 @@ export function BulletTracers() {
       {dummyArray.map((_, i) => (
         <mesh
           key={`s_${i}`}
-          ref={(el) => { sparkMeshes.current[i] = el; }}
+          ref={(el) => {
+            sparkMeshes.current[i] = el;
+          }}
           visible={false}
         >
           <sphereGeometry args={[0.5, 4, 4]} />
