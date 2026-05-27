@@ -27,7 +27,7 @@ export function App() {
           {/* HUD Status Bar & Overlays */}
           <HUD />
 
-          {getInputMode() === "touch" && <MobileControls />}
+          <MobileControls />
           {/* Tab Scoreboard */}
           <Scoreboard />
         </>

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from 'react';
 
 type Props = {
   onMove: (x: number, y: number) => void; // -1..1
@@ -8,7 +8,9 @@ type Props = {
 export function VirtualJoystick({ onMove, size = 140 }: Props) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const activeId = useRef<number | null>(null);
-  const origin = useRef({ x: 0, y: 0 });
+  const center = useRef({ x: 0, y: 0 });
+  const radius = size / 2;
+  const [knob, setKnob] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     const el = elRef.current;
@@ -16,73 +18,75 @@ export function VirtualJoystick({ onMove, size = 140 }: Props) {
 
     const clamp = (v: number, a = -1, b = 1) => Math.max(a, Math.min(b, v));
 
-    const onStart = (e: TouchEvent) => {
-      for (const t of Array.from(e.changedTouches)) {
-        activeId.current = t.identifier;
-        const rect = el.getBoundingClientRect();
-        origin.current = { x: t.clientX, y: t.clientY };
-        e.preventDefault();
-        break;
-      }
-    };
-
-    const onMove = (e: TouchEvent) => {
-      if (activeId.current === null) return;
-      const t = Array.from(e.touches).find(
-        (tt) => tt.identifier === activeId.current,
-      );
-      if (!t) return;
-      const dx = t.clientX - origin.current.x;
-      const dy = t.clientY - origin.current.y;
-      const r = size / 2;
-      const nx = clamp(dx / r);
-      const ny = clamp(-dy / r); // up is positive
-      (window as any).requestAnimationFrame(() => onMoveCallback(nx, ny));
+    const onPointerDown = (e: PointerEvent) => {
+      if (activeId.current !== null) return;
+      activeId.current = e.pointerId;
+      el.setPointerCapture(e.pointerId);
+      const rect = el.getBoundingClientRect();
+      center.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      updateFromPoint(e.clientX, e.clientY);
       e.preventDefault();
     };
 
-    const onEnd = (e: TouchEvent) => {
-      for (const t of Array.from(e.changedTouches)) {
-        if (t.identifier === activeId.current) {
-          activeId.current = null;
-          (window as any).requestAnimationFrame(() => onMoveCallback(0, 0));
-          e.preventDefault();
-          break;
-        }
+    const onPointerMove = (e: PointerEvent) => {
+      if (e.pointerId !== activeId.current) return;
+      updateFromPoint(e.clientX, e.clientY);
+      e.preventDefault();
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (e.pointerId !== activeId.current) return;
+      try { el.releasePointerCapture(e.pointerId); } catch {}
+      activeId.current = null;
+      setKnob({ x: 0, y: 0 });
+      onMove(0, 0);
+      e.preventDefault();
+    };
+
+    const updateFromPoint = (px: number, py: number) => {
+      const dx = px - center.current.x;
+      const dy = py - center.current.y;
+      const dist = Math.hypot(dx, dy);
+      const clamped = dist > radius ? radius / dist : 1;
+      const ndx = dx * clamped;
+      const ndy = dy * clamped;
+
+      // normalized -1..1
+      let nx = ndx / radius;
+      let ny = -ndy / radius; // up positive
+
+      // prevent diagonal speed boost by normalizing magnitude
+      const mag = Math.hypot(nx, ny);
+      if (mag > 1) {
+        nx /= mag;
+        ny /= mag;
       }
+
+      setKnob({ x: ndx, y: ndy });
+      onMove(nx, ny);
     };
 
-    const onMoveCallback = (x: number, y: number) => {
-      onMove(x, y);
-    };
-
-    el.addEventListener("touchstart", onStart, { passive: false });
-    window.addEventListener("touchmove", onMove, { passive: false });
-    window.addEventListener("touchend", onEnd, { passive: false });
-    window.addEventListener("touchcancel", onEnd, { passive: false });
+    el.addEventListener('pointerdown', onPointerDown as any);
+    window.addEventListener('pointermove', onPointerMove as any);
+    window.addEventListener('pointerup', onPointerUp as any);
+    window.addEventListener('pointercancel', onPointerUp as any);
 
     return () => {
-      el.removeEventListener("touchstart", onStart);
-      window.removeEventListener("touchmove", onMove);
-      window.removeEventListener("touchend", onEnd);
-      window.removeEventListener("touchcancel", onEnd);
+      el.removeEventListener('pointerdown', onPointerDown as any);
+      window.removeEventListener('pointermove', onPointerMove as any);
+      window.removeEventListener('pointerup', onPointerUp as any);
+      window.removeEventListener('pointercancel', onPointerUp as any);
     };
-  }, [onMove, size]);
+  }, [onMove, radius]);
 
   return (
-    <div
-      ref={elRef}
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        background: "rgba(0,0,0,0.12)",
-        border: "1px solid rgba(255,255,255,0.06)",
-        touchAction: "none",
-        WebkitUserSelect: "none",
-        userSelect: "none",
-      }}
-    />
+    <div className="virtual-joystick" ref={elRef} style={{ width: size, height: size }}>
+      <div className="joystick-base" style={{ width: size, height: size }} />
+      <div
+        className="joystick-knob"
+        style={{ transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))` }}
+      />
+    </div>
   );
 }
 
