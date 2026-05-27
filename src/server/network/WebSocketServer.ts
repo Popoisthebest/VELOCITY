@@ -139,6 +139,13 @@ export class WebSocketServer {
   public sendToPlayer(playerId: string, packet: ServerPacket): void {
     const ws = this.connections.get(playerId);
     if (ws && ws.readyState === WebSocket.OPEN) {
+      // Backpressure guard: skip S_SNAPSHOT for congested clients
+      if (
+        packet.type === PacketType.S_SNAPSHOT &&
+        ws.bufferedAmount > 512 * 1024
+      ) {
+        return;
+      }
       ws.send(encodePacket(packet));
     }
   }
@@ -151,12 +158,16 @@ export class WebSocketServer {
     const room = this.roomManager.getRoom(roomId);
     if (!room) return;
 
+    const isSnapshot = packet.type === PacketType.S_SNAPSHOT;
     const payload = encodePacket(packet);
 
     for (const playerId of room.players.keys()) {
       if (playerId === excludeId) continue;
       const ws = this.connections.get(playerId);
       if (ws && ws.readyState === WebSocket.OPEN) {
+        if (isSnapshot && ws.bufferedAmount > 512 * 1024) {
+          continue;
+        }
         ws.send(payload);
       }
     }
