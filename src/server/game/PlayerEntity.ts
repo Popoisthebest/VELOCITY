@@ -87,6 +87,7 @@ export class PlayerEntity {
       this.state.sprinting = moveResult.sprinting;
       this.state.sliding = moveResult.sliding;
       this.state.slideTime = moveResult.slideTime;
+      this.state.ping = input.ping;
 
       this.lastProcessedSequence = input.sequence;
     }

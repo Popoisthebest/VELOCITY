@@ -54,6 +54,7 @@ export interface PlayerState {
   score: number;
   streak: number;
   spawnProtectionUntil: number;
+  ping: number;
 }
 
 export interface InputState {
@@ -70,6 +71,7 @@ export interface InputState {
   pitch: number;
   sequence: number;
   deltaTime: number;
+  ping: number;
 }
 
 export interface RoomInfo {
@@ -149,5 +151,6 @@ export function createDefaultPlayerState(
     score: 0,
     streak: 0,
     spawnProtectionUntil: 0,
+    ping: 0,
   };
 }

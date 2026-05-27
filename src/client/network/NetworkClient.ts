@@ -197,14 +197,6 @@ export class NetworkClient {
           );
         }
 
-        // Measure ping (RTT / 2 is approximate latency)
-        if (this.lastPingSentTime > 0) {
-          const rtt = Date.now() - this.lastPingSentTime;
-          // Smooth the ping value
-          store.setPing(Math.round(rtt));
-          this.lastPingSentTime = 0; // reset
-        }
-
         const localId = store.playerId;
         if (!localId) return;
 

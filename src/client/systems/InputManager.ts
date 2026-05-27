@@ -4,6 +4,7 @@
 // ========================================
 
 import type { InputState } from "@shared/types/index.js";
+import { useGameStore } from "../store/gameStore.js";
 
 export class InputManager {
   private static instance: InputManager | null = null;
@@ -233,6 +234,7 @@ export class InputManager {
       pitch: this.pitch,
       sequence,
       deltaTime,
+      ping: useGameStore.getState().ping,
     };
   }
 

@@ -186,7 +186,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ hitMarker: true, hitMarkerTimeout: timeout });
   },
   setShowScoreboard: (showScoreboard) => set({ showScoreboard }),
-  setPing: (ping) => set({ ping }),
+  setPing: (ping) =>
+    set((state) => ({
+      // EMA Smoothing: NewValue = OldValue * 0.9 + Sample * 0.1
+      // If old ping is 0, just set it to current sample
+      ping: state.ping === 0 ? ping : Math.round(state.ping * 0.9 + ping * 0.1),
+    })),
   setFps: (fps) => set({ fps }),
   addDamageNumber: (damage, headshot) => {
     const id = Math.random().toString(36).substring(2, 9);
