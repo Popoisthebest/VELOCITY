@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState } from "react";
 
 type Props = {
   onPress: () => void;
@@ -23,20 +23,22 @@ export function TouchButton({ onPress, onRelease, label, size = 64 }: Props) {
     };
 
     const onPointerUp = (e: PointerEvent) => {
-      try { el.releasePointerCapture?.(e.pointerId); } catch {}
+      try {
+        el.releasePointerCapture?.(e.pointerId);
+      } catch {}
       setActive(false);
       if (onRelease) onRelease();
       e.preventDefault();
     };
 
-    el.addEventListener('pointerdown', onPointerDown as any);
-    window.addEventListener('pointerup', onPointerUp as any);
-    window.addEventListener('pointercancel', onPointerUp as any);
+    el.addEventListener("pointerdown", onPointerDown as any);
+    window.addEventListener("pointerup", onPointerUp as any);
+    window.addEventListener("pointercancel", onPointerUp as any);
 
     return () => {
-      el.removeEventListener('pointerdown', onPointerDown as any);
-      window.removeEventListener('pointerup', onPointerUp as any);
-      window.removeEventListener('pointercancel', onPointerUp as any);
+      el.removeEventListener("pointerdown", onPointerDown as any);
+      window.removeEventListener("pointerup", onPointerUp as any);
+      window.removeEventListener("pointercancel", onPointerUp as any);
     };
   }, [onPress, onRelease]);
 
@@ -48,14 +50,16 @@ export function TouchButton({ onPress, onRelease, label, size = 64 }: Props) {
         width: size,
         height: size,
         borderRadius: 12,
-        background: active ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.06)',
-        color: 'white',
+        background: active
+          ? "rgba(255,255,255,0.18)"
+          : "rgba(255,255,255,0.06)",
+        color: "white",
         fontWeight: 700,
-        touchAction: 'none',
-        border: '1px solid rgba(255,255,255,0.06)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        touchAction: "none",
+        border: "1px solid rgba(255,255,255,0.06)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
       {label}

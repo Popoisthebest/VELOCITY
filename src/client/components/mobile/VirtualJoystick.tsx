@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState } from "react";
 
 type Props = {
   onMove: (x: number, y: number) => void; // -1..1
@@ -23,7 +23,10 @@ export function VirtualJoystick({ onMove, size = 140 }: Props) {
       activeId.current = e.pointerId;
       el.setPointerCapture(e.pointerId);
       const rect = el.getBoundingClientRect();
-      center.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      center.current = {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      };
       updateFromPoint(e.clientX, e.clientY);
       e.preventDefault();
     };
@@ -36,7 +39,9 @@ export function VirtualJoystick({ onMove, size = 140 }: Props) {
 
     const onPointerUp = (e: PointerEvent) => {
       if (e.pointerId !== activeId.current) return;
-      try { el.releasePointerCapture(e.pointerId); } catch {}
+      try {
+        el.releasePointerCapture(e.pointerId);
+      } catch {}
       activeId.current = null;
       setKnob({ x: 0, y: 0 });
       onMove(0, 0);
@@ -66,25 +71,31 @@ export function VirtualJoystick({ onMove, size = 140 }: Props) {
       onMove(nx, ny);
     };
 
-    el.addEventListener('pointerdown', onPointerDown as any);
-    window.addEventListener('pointermove', onPointerMove as any);
-    window.addEventListener('pointerup', onPointerUp as any);
-    window.addEventListener('pointercancel', onPointerUp as any);
+    el.addEventListener("pointerdown", onPointerDown as any);
+    window.addEventListener("pointermove", onPointerMove as any);
+    window.addEventListener("pointerup", onPointerUp as any);
+    window.addEventListener("pointercancel", onPointerUp as any);
 
     return () => {
-      el.removeEventListener('pointerdown', onPointerDown as any);
-      window.removeEventListener('pointermove', onPointerMove as any);
-      window.removeEventListener('pointerup', onPointerUp as any);
-      window.removeEventListener('pointercancel', onPointerUp as any);
+      el.removeEventListener("pointerdown", onPointerDown as any);
+      window.removeEventListener("pointermove", onPointerMove as any);
+      window.removeEventListener("pointerup", onPointerUp as any);
+      window.removeEventListener("pointercancel", onPointerUp as any);
     };
   }, [onMove, radius]);
 
   return (
-    <div className="virtual-joystick" ref={elRef} style={{ width: size, height: size }}>
+    <div
+      className="virtual-joystick"
+      ref={elRef}
+      style={{ width: size, height: size }}
+    >
       <div className="joystick-base" style={{ width: size, height: size }} />
       <div
         className="joystick-knob"
-        style={{ transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))` }}
+        style={{
+          transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))`,
+        }}
       />
     </div>
   );
