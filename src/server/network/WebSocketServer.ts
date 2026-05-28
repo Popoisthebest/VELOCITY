@@ -85,7 +85,7 @@ export class WebSocketServer {
   private handlePacket(playerId: string, packet: ClientPacket): void {
     switch (packet.type) {
       case PacketType.C_JOIN: {
-        const room = this.roomManager.joinOrCreate(
+        this.roomManager.joinOrCreate(
           playerId,
           packet.nickname,
           packet.roomId,
@@ -107,7 +107,12 @@ export class WebSocketServer {
       case PacketType.C_SHOOT: {
         const room = this.roomManager.getPlayerRoom(playerId);
         if (room) {
-          room.handleShoot(playerId, packet.origin, packet.direction);
+          room.handleShoot(
+            playerId,
+            packet.origin,
+            packet.direction,
+            packet.spreadSeed,
+          );
         }
         break;
       }
@@ -131,7 +136,7 @@ export class WebSocketServer {
       default:
         console.warn(
           `[WebSocketServer] Unhandled packet type from ${playerId}:`,
-          (packet as any).type,
+          (packet as { type: unknown }).type,
         );
     }
   }

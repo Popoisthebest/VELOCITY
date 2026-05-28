@@ -3,7 +3,7 @@
 // High-performance pre-allocated object pool for visual combat FX
 // ========================================
 
-import React, { useEffect, useRef } from "react";
+import React, { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { Vec3 } from "@shared/types/index.js";
 import * as THREE from "three";

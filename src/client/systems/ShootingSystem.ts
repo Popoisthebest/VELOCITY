@@ -5,11 +5,13 @@
 
 import type { PlayerState, Vec3 } from "@shared/types/index.js";
 import type { WeaponConfig } from "@shared/constants/index.js";
+import { createShotSeed, getShotDirections } from "@shared/combat/spread.js";
 import { inputManager } from "./InputManager.js";
 import * as THREE from "three";
 
 export class ShootingSystem {
   private lastFireTime = 0;
+  private shotId = 0;
 
   /**
    * Tries to execute a shot.
@@ -20,7 +22,13 @@ export class ShootingSystem {
     localPlayer: PlayerState,
     weaponConfig: WeaponConfig,
     now: number,
-  ): { origin: Vec3; direction: Vec3 } | null {
+  ): {
+    origin: Vec3;
+    direction: Vec3;
+    pelletDirections: Vec3[];
+    shotId: number;
+    spreadSeed: number;
+  } | null {
     if (!localPlayer.alive) return null;
     if (localPlayer.reloading) return null;
     if (localPlayer.ammo <= 0) return null;
@@ -39,8 +47,19 @@ export class ShootingSystem {
     const direction = new THREE.Vector3();
     camera.getWorldDirection(direction);
 
-    // Apply weapon spread
-    const spreadDirection = this.applySpread(direction, weaponConfig.spread);
+    const baseDirection = {
+      x: direction.x,
+      y: direction.y,
+      z: direction.z,
+    };
+    const spreadSeed = createShotSeed(now);
+    const pelletDirections = getShotDirections(
+      baseDirection,
+      weaponConfig,
+      spreadSeed,
+      localPlayer.velocity,
+      localPlayer.crouching,
+    );
 
     // Apply visual recoil to the input manager orientation
     const recoilPitchKick = weaponConfig.recoil;
@@ -51,38 +70,11 @@ export class ShootingSystem {
 
     return {
       origin: { x: origin.x, y: origin.y, z: origin.z },
-      direction: {
-        x: spreadDirection.x,
-        y: spreadDirection.y,
-        z: spreadDirection.z,
-      },
+      direction: baseDirection,
+      pelletDirections,
+      shotId: this.shotId++,
+      spreadSeed,
     };
-  }
-
-  private applySpread(direction: THREE.Vector3, spread: number): THREE.Vector3 {
-    if (spread <= 0.0001) return direction.clone();
-
-    const angle = Math.random() * Math.PI * 2;
-    const radius = Math.random() * spread;
-
-    // Create perpendicular coordinate frame
-    const right = new THREE.Vector3();
-    const up = new THREE.Vector3(0, 1, 0);
-
-    if (Math.abs(direction.y) > 0.9) {
-      up.set(1, 0, 0);
-    }
-
-    right.crossVectors(direction, up).normalize();
-    const actualUp = new THREE.Vector3()
-      .crossVectors(right, direction)
-      .normalize();
-
-    const offset = new THREE.Vector3()
-      .addScaledVector(right, Math.cos(angle) * radius)
-      .addScaledVector(actualUp, Math.sin(angle) * radius);
-
-    return direction.clone().add(offset).normalize();
   }
 }
 export const shootingSystem = new ShootingSystem();

@@ -6,19 +6,14 @@
 import type {
   PlayerState,
   InputState,
-  Vec3,
   SpawnPoint,
   AABB,
 } from "../../shared/types/index.js";
-import {
-  WeaponType,
-  createDefaultPlayerState,
-} from "../../shared/types/index.js";
+import { createDefaultPlayerState } from "../../shared/types/index.js";
 import { processMovement } from "../../shared/physics/movement.js";
 import { resolveCollisions } from "../../shared/physics/collision.js";
 import {
   MAX_HP,
-  MAX_ARMOR,
   WEAPONS,
   RESPAWN_TIME,
   SPAWN_PROTECTION_TIME,
@@ -86,6 +81,7 @@ export class PlayerEntity {
       this.state.crouching = moveResult.crouching;
       this.state.sprinting = moveResult.sprinting;
       this.state.sliding = moveResult.sliding;
+      this.state.aiming = input.aim;
       this.state.slideTime = moveResult.slideTime;
       this.state.ping = input.ping;
 
@@ -157,6 +153,7 @@ export class PlayerEntity {
     this.state.crouching = false;
     this.state.sprinting = false;
     this.state.sliding = false;
+    this.state.aiming = false;
     this.state.slideTime = 0;
     this.state.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_TIME;
 

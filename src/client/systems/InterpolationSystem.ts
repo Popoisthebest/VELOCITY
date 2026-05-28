@@ -4,7 +4,10 @@
 // ========================================
 
 import type { PlayerState, Vec3 } from "@shared/types/index.js";
-import { INTERPOLATION_DELAY } from "@shared/constants/index.js";
+import {
+  INTERPOLATION_DELAY,
+  MAX_EXTRAPOLATION_TIME,
+} from "@shared/constants/index.js";
 
 interface Snapshot {
   timestamp: number;
@@ -14,12 +17,22 @@ interface Snapshot {
 export class InterpolationSystem {
   private buffers = new Map<string, Snapshot[]>();
   private readonly maxBufferSize = 10; // keep a bit more than 3 for safety during network jitter
+  private serverTimeOffset: number | null = null;
+  private lastOffsetSampleTimestamp = 0;
+
+  public getRenderTime(now = Date.now()): number {
+    const serverNow =
+      this.serverTimeOffset === null ? now : now - this.serverTimeOffset;
+    return serverNow - INTERPOLATION_DELAY;
+  }
 
   public addSnapshot(
     playerId: string,
     state: PlayerState,
     timestamp: number,
   ): void {
+    this.updateServerTimeOffset(timestamp);
+
     if (!this.buffers.has(playerId)) {
       this.buffers.set(playerId, []);
     }
@@ -57,9 +70,9 @@ export class InterpolationSystem {
       return buffer[0].state;
     }
 
-    // If renderTime is newer than our newest snapshot, snap to newest (or extrapolate)
+    // If renderTime is newer than our newest snapshot, extrapolate briefly.
     if (renderTime > buffer[buffer.length - 1].timestamp) {
-      return buffer[buffer.length - 1].state;
+      return this.extrapolate(buffer[buffer.length - 1], renderTime);
     }
 
     // Find the two snapshots bracketing renderTime
@@ -121,6 +134,7 @@ export class InterpolationSystem {
     interpolated.alive = right.state.alive;
     interpolated.crouching = right.state.crouching;
     interpolated.sprinting = right.state.sprinting;
+    interpolated.aiming = right.state.aiming;
     interpolated.grounded = right.state.grounded;
     interpolated.weapon = right.state.weapon;
     interpolated.ammo = right.state.ammo;
@@ -151,8 +165,40 @@ export class InterpolationSystem {
     return start + diff * t;
   }
 
+  private updateServerTimeOffset(serverTimestamp: number): void {
+    if (serverTimestamp <= this.lastOffsetSampleTimestamp) return;
+
+    this.lastOffsetSampleTimestamp = serverTimestamp;
+    const offsetSample = Date.now() - serverTimestamp;
+    this.serverTimeOffset =
+      this.serverTimeOffset === null
+        ? offsetSample
+        : this.serverTimeOffset * 0.9 + offsetSample * 0.1;
+  }
+
+  private extrapolate(snapshot: Snapshot, renderTime: number): PlayerState {
+    const dt =
+      Math.min(
+        Math.max(renderTime - snapshot.timestamp, 0),
+        MAX_EXTRAPOLATION_TIME,
+      ) / 1000;
+
+    return {
+      ...snapshot.state,
+      position: {
+        x: snapshot.state.position.x + snapshot.state.velocity.x * dt,
+        y: snapshot.state.position.y + snapshot.state.velocity.y * dt,
+        z: snapshot.state.position.z + snapshot.state.velocity.z * dt,
+      },
+      velocity: { ...snapshot.state.velocity },
+      rotation: { ...snapshot.state.rotation },
+    };
+  }
+
   public clear(): void {
     this.buffers.clear();
+    this.serverTimeOffset = null;
+    this.lastOffsetSampleTimestamp = 0;
   }
 }
 export const interpolationSystem = new InterpolationSystem();

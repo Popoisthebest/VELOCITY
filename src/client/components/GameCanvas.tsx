@@ -15,13 +15,16 @@ import { addVisualTracer, BulletTracers } from "./BulletTracer.js";
 import { ArenaMap } from "../scenes/ArenaMap.js";
 import { FPSCamera } from "./FPSCamera.js";
 import { RemotePlayer } from "./RemotePlayer.js";
+import { WeaponViewModel } from "./WeaponViewModel.js";
+import { triggerMuzzleFlash } from "../systems/WeaponEffects.js";
+import { audioManager } from "../systems/AudioManager.js";
 import { processMovement } from "@shared/physics/movement.js";
 import {
   resolveCollisions,
   raycastMap,
   raycastPlayer,
 } from "@shared/physics/collision.js";
-import { WEAPONS, NETWORK_INTERVAL } from "@shared/constants/index.js";
+import { WEAPONS } from "@shared/constants/index.js";
 import { PacketType } from "@shared/protocol/index.js";
 import type {
   Vec3,
@@ -29,7 +32,6 @@ import type {
   PlayerState,
   AABB,
 } from "@shared/types/index.js";
-import * as THREE from "three";
 
 function calculateLocalHitPoint(
   origin: Vec3,
@@ -78,7 +80,7 @@ function GameLoopController() {
   const gamePhase = useGameStore((state) => state.gamePhase);
 
   const inputSequence = useRef(0);
-  const lastInputSentTime = useRef(0);
+  const wasShootPressed = useRef(false);
 
   // FPS tracking
   const fpsTimer = useRef(0);
@@ -98,7 +100,10 @@ function GameLoopController() {
       fpsTimer.current = 0;
     }
 
-    if (!localPlayer || !mapData || isDead || gamePhase === "ended") return;
+    if (!localPlayer || !mapData || isDead || gamePhase === "ended") {
+      wasShootPressed.current = false;
+      return;
+    }
 
     // 2. Sample Keyboard & Mouse orientation
     const input = inputManager.getInputState(inputSequence.current++, delta);
@@ -125,68 +130,75 @@ function GameLoopController() {
 
     // 4. Handle client-side shooting & reload prediction
     const weaponConfig = WEAPONS[localPlayer.weapon];
+    let nextLocalPlayer = localPlayer;
 
     // Check local reload timer
-    if (localPlayer.reloading) {
-      if (now >= localPlayer.reloadEndTime) {
-        useGameStore.getState().updateLocalPlayer({
+    if (nextLocalPlayer.reloading) {
+      if (now >= nextLocalPlayer.reloadEndTime) {
+        nextLocalPlayer = {
+          ...nextLocalPlayer,
           ammo: weaponConfig.magazineSize,
           reloading: false,
-        });
+        };
       }
-    } else if (input.reload && localPlayer.ammo < weaponConfig.magazineSize) {
+    } else if (
+      input.reload &&
+      nextLocalPlayer.ammo < weaponConfig.magazineSize
+    ) {
       // Trigger reload
       networkClient.send({ type: PacketType.C_RELOAD });
-      useGameStore.getState().updateLocalPlayer({
+      nextLocalPlayer = {
+        ...nextLocalPlayer,
         reloading: true,
         reloadEndTime: now + weaponConfig.reloadTime,
-      });
+      };
     }
 
     // Trigger shoot
-    let didShoot = false;
-    let shootOrigin: Vec3 | null = null;
-    let shootDir: Vec3 | null = null;
+    const shootPressed = input.shoot;
+    const shootStarted = shootPressed && !wasShootPressed.current;
+    wasShootPressed.current = shootPressed;
+    const wantsShoot = weaponConfig.automatic ? shootPressed : shootStarted;
 
-    if (input.shoot && !localPlayer.reloading && localPlayer.ammo > 0) {
+    if (wantsShoot && !nextLocalPlayer.reloading && nextLocalPlayer.ammo > 0) {
       const shot = shootingSystem.tryShoot(
         camera,
-        localPlayer,
+        nextLocalPlayer,
         weaponConfig,
         now,
       );
       if (shot) {
-        didShoot = true;
-        shootOrigin = shot.origin;
-        shootDir = shot.direction;
-
-        // Perform local hitscan to find tracer end point
-        const hitPoint = calculateLocalHitPoint(
-          shot.origin,
-          shot.direction,
-          weaponConfig,
-          remotePlayers,
-          mapData.boxes,
-        );
-
-        // Render tracer locally
-        addVisualTracer(shot.origin, hitPoint);
+        for (const pelletDirection of shot.pelletDirections) {
+          const hitPoint = calculateLocalHitPoint(
+            shot.origin,
+            pelletDirection,
+            weaponConfig,
+            remotePlayers,
+            mapData.boxes,
+          );
+          addVisualTracer(shot.origin, hitPoint);
+        }
+        triggerMuzzleFlash();
+        audioManager.playShoot(nextLocalPlayer.weapon);
 
         // Deduct ammo instantly for responsive UI
-        const nextAmmo = localPlayer.ammo - 1;
+        const nextAmmo = nextLocalPlayer.ammo - 1;
         const autoReloading = nextAmmo <= 0;
 
-        useGameStore.getState().updateLocalPlayer({
+        nextLocalPlayer = {
+          ...nextLocalPlayer,
           ammo: nextAmmo,
           reloading: autoReloading,
           reloadEndTime: autoReloading ? now + weaponConfig.reloadTime : 0,
-        });
+        };
 
         // Send Shoot Packet to server
         networkClient.send({
           type: PacketType.C_SHOOT,
           origin: shot.origin,
           direction: shot.direction,
+          shotId: shot.shotId,
+          spreadSeed: shot.spreadSeed,
           timestamp: now,
         });
       }
@@ -194,13 +206,14 @@ function GameLoopController() {
 
     // Update store with predicted local state
     useGameStore.getState().setLocalPlayer({
-      ...localPlayer,
+      ...nextLocalPlayer,
       position: collResult.position,
       velocity: collResult.velocity,
       grounded: collResult.grounded,
       crouching: moveResult.crouching,
       sprinting: moveResult.sprinting,
       sliding: moveResult.sliding,
+      aiming: input.aim,
       slideTime: moveResult.slideTime,
       rotation: { yaw: input.yaw, pitch: input.pitch },
     });
@@ -218,7 +231,32 @@ function GameLoopController() {
 export function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const remotePlayers = useGameStore((state) => state.remotePlayers);
+  const graphicsQuality = useGameStore((state) => state.graphicsQuality);
   const remoteIds = Array.from(remotePlayers.keys());
+  const renderConfig =
+    graphicsQuality === "low"
+      ? {
+          dpr: [0.75, 1] as [number, number],
+          antialias: false,
+          shadows: false,
+          shadowMapSize: 512,
+          fogFar: 80,
+        }
+      : graphicsQuality === "medium"
+        ? {
+            dpr: [1, 1.5] as [number, number],
+            antialias: true,
+            shadows: true,
+            shadowMapSize: 1024,
+            fogFar: 100,
+          }
+        : {
+            dpr: [1, 2] as [number, number],
+            antialias: true,
+            shadows: true,
+            shadowMapSize: 2048,
+            fogFar: 120,
+          };
 
   // Listen for pointer lock setup
   useEffect(() => {
@@ -270,8 +308,12 @@ export function GameCanvas() {
     <div className="w-full h-full relative">
       <Canvas
         ref={canvasRef}
-        shadows
-        gl={{ antialias: true, dpr: [1, 2] }}
+        shadows={renderConfig.shadows}
+        dpr={renderConfig.dpr}
+        gl={{
+          antialias: renderConfig.antialias,
+          powerPreference: "high-performance",
+        }}
         camera={{ fov: 90, near: 0.1, far: 1000 }}
       >
         {/* Lights */}
@@ -279,20 +321,21 @@ export function GameCanvas() {
         <directionalLight
           position={[15, 30, 15]}
           intensity={1.8}
-          castShadow
-          shadow-mapSize-width={1024}
-          shadow-mapSize-height={1024}
+          castShadow={renderConfig.shadows}
+          shadow-mapSize-width={renderConfig.shadowMapSize}
+          shadow-mapSize-height={renderConfig.shadowMapSize}
         />
 
         {/* Sky styling matching sky color */}
         <color attach="background" args={["#0b0d19"]} />
-        <fog attach="fog" args={["#0b0d19", 40, 120]} />
+        <fog attach="fog" args={["#0b0d19", 40, renderConfig.fogFar]} />
 
         {/* Arena static geometry */}
         <ArenaMap />
 
         {/* First Person Camera */}
         <FPSCamera />
+        <WeaponViewModel />
 
         {/* Remote Players */}
         {remoteIds.map((id) => (

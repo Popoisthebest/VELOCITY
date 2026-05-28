@@ -16,8 +16,6 @@ export function VirtualJoystick({ onMove, size = 140 }: Props) {
     const el = elRef.current;
     if (!el) return;
 
-    const clamp = (v: number, a = -1, b = 1) => Math.max(a, Math.min(b, v));
-
     const onPointerDown = (e: PointerEvent) => {
       if (activeId.current !== null) return;
       activeId.current = e.pointerId;
@@ -71,16 +69,16 @@ export function VirtualJoystick({ onMove, size = 140 }: Props) {
       onMove(nx, ny);
     };
 
-    el.addEventListener("pointerdown", onPointerDown as any);
-    window.addEventListener("pointermove", onPointerMove as any);
-    window.addEventListener("pointerup", onPointerUp as any);
-    window.addEventListener("pointercancel", onPointerUp as any);
+    el.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
 
     return () => {
-      el.removeEventListener("pointerdown", onPointerDown as any);
-      window.removeEventListener("pointermove", onPointerMove as any);
-      window.removeEventListener("pointerup", onPointerUp as any);
-      window.removeEventListener("pointercancel", onPointerUp as any);
+      el.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
     };
   }, [onMove, radius]);
 

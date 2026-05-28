@@ -10,7 +10,7 @@ export function setLanguage(lang: string) {
 }
 
 export function t(key: string): string {
-  return (langs[current] && langs[current][key]) || (en as any)[key] || key;
+  return langs[current]?.[key] || en[key as keyof typeof en] || key;
 }
 
 export default t;

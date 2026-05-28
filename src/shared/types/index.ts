@@ -40,6 +40,7 @@ export interface PlayerState {
   crouching: boolean;
   sprinting: boolean;
   sliding: boolean;
+  aiming: boolean;
   slideTime: number;
   grounded: boolean;
   weapon: WeaponType;
@@ -65,6 +66,7 @@ export interface InputState {
   jump: boolean;
   sprint: boolean;
   crouch: boolean;
+  aim: boolean;
   shoot: boolean;
   reload: boolean;
   yaw: number;
@@ -137,6 +139,7 @@ export function createDefaultPlayerState(
     crouching: false,
     sprinting: false,
     sliding: false,
+    aiming: false,
     slideTime: 0,
     grounded: false,
     weapon: WeaponType.ASSAULT_RIFLE,

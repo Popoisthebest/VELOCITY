@@ -3,10 +3,11 @@
 // Manages viewport orientation, eye position, weapon bobbing, and recoil recovery
 // ========================================
 
-import React, { useRef } from "react";
+import { useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGameStore } from "../store/gameStore.js";
 import { inputManager } from "../systems/InputManager.js";
+import { WeaponType } from "@shared/types/index.js";
 import {
   PLAYER_HEIGHT,
   PLAYER_CROUCH_HEIGHT,
@@ -25,12 +26,32 @@ export function FPSCamera() {
 
   // Visual recoil shake (separate from mouse input recoil)
   const visualRecoilY = useRef(0);
-  const recoilVelocityY = useRef(0);
-
   useFrame((state, delta) => {
-    if (!localPlayer || isDead) return;
+    if (!localPlayer || isDead) {
+      if (camera instanceof THREE.PerspectiveCamera && camera.fov !== 90) {
+        camera.fov = THREE.MathUtils.lerp(
+          camera.fov,
+          90,
+          Math.min(delta * 14, 1),
+        );
+        camera.updateProjectionMatrix();
+      }
+      return;
+    }
 
     const { position, velocity, crouching, grounded } = localPlayer;
+    const scoped =
+      localPlayer.weapon === WeaponType.SNIPER && localPlayer.aiming;
+
+    if (camera instanceof THREE.PerspectiveCamera) {
+      const targetFov = scoped ? 34 : 90;
+      camera.fov = THREE.MathUtils.lerp(
+        camera.fov,
+        targetFov,
+        Math.min(delta * 14, 1),
+      );
+      camera.updateProjectionMatrix();
+    }
 
     // 1. Calculate eye height
     const targetEyeHeight = crouching

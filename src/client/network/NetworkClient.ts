@@ -9,11 +9,11 @@ import {
   PacketType,
 } from "@shared/protocol/index.js";
 import type { ClientPacket, ServerPacket } from "@shared/protocol/index.js";
-import { createDefaultPlayerState } from "@shared/types/index.js";
 import { useGameStore } from "../store/gameStore.js";
 import { predictionSystem } from "../systems/PredictionSystem.js";
 import { interpolationSystem } from "../systems/InterpolationSystem.js";
 import { inputManager } from "../systems/InputManager.js";
+import { audioManager } from "../systems/AudioManager.js";
 
 export class NetworkClient {
   private static instance: NetworkClient | null = null;
@@ -243,7 +243,7 @@ export class NetworkClient {
           interpolationSystem.addSnapshot(id, state, packet.timestamp);
 
           // Get the current interpolated state for rendering
-          const renderTime = Date.now() - 100; // 100ms interpolation delay
+          const renderTime = interpolationSystem.getRenderTime();
           const interpState = interpolationSystem.getInterpolatedState(
             id,
             renderTime,
@@ -263,16 +263,21 @@ export class NetworkClient {
       case PacketType.S_HIT_CONFIRM: {
         store.triggerHitMarker();
         store.addDamageNumber(packet.hit.damage, packet.hit.headshot);
+        audioManager.playHit();
         break;
       }
 
       case PacketType.S_KILL: {
         store.addKillEvent(packet.kill);
+        if (packet.kill.killerId === store.playerId) {
+          audioManager.playKill();
+        }
         break;
       }
 
       case PacketType.S_DEATH: {
         store.setDead(true, packet.respawnTime);
+        audioManager.playDeath();
         if (store.localPlayer) {
           store.updateLocalPlayer({ alive: false });
         }
@@ -287,6 +292,7 @@ export class NetworkClient {
             position: packet.position,
             rotation: packet.rotation,
             velocity: { x: 0, y: 0, z: 0 },
+            aiming: false,
           });
         }
         // Force reset input manager yaw/pitch to match spawn point rotation
@@ -317,7 +323,7 @@ export class NetworkClient {
       default:
         console.warn(
           "[NetworkClient] Unhandled server packet:",
-          (packet as any).type,
+          (packet as { type: unknown }).type,
         );
     }
   }

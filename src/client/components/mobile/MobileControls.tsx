@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef } from "react";
 import VirtualJoystick from "./VirtualJoystick";
 import TouchButton from "./TouchButton";
 import { inputManager } from "../../systems/InputManager.js";
@@ -8,7 +8,7 @@ function shouldForceTouch(): boolean {
   try {
     const qp = new URLSearchParams(window.location.search);
     return qp.get("touch") === "1" || qp.get("debugTouch") === "1";
-  } catch (err) {
+  } catch {
     return false;
   }
 }
@@ -40,7 +40,7 @@ export function MobileControls() {
 
     lookPointerId.current = e.pointerId;
     lastLook.current = { x: e.clientX, y: e.clientY };
-    (e.target as Element).setPointerCapture?.(e.pointerId as any);
+    (e.target as Element).setPointerCapture?.(e.pointerId);
     e.preventDefault();
   };
 
@@ -57,7 +57,7 @@ export function MobileControls() {
   const onLookPointerUp = (e: React.PointerEvent) => {
     if (e.pointerId !== lookPointerId.current) return;
     try {
-      (e.target as Element).releasePointerCapture?.(e.pointerId as any);
+      (e.target as Element).releasePointerCapture?.(e.pointerId);
     } catch {}
     lookPointerId.current = null;
     e.preventDefault();
@@ -95,13 +95,24 @@ export function MobileControls() {
         />
         <TouchButton
           label="슬라이드"
-          onPress={() => inputManager.setTouchCrouch(true)}
-          onRelease={() => inputManager.setTouchCrouch(false)}
+          onPress={() => {
+            inputManager.setTouchSprint(true);
+            inputManager.setTouchCrouch(true);
+          }}
+          onRelease={() => {
+            inputManager.setTouchSprint(false);
+            inputManager.setTouchCrouch(false);
+          }}
         />
         <TouchButton
           label="재장전"
           onPress={() => inputManager.setTouchReload(true)}
           onRelease={() => inputManager.setTouchReload(false)}
+        />
+        <TouchButton
+          label="조준"
+          onPress={() => inputManager.setTouchAim(true)}
+          onRelease={() => inputManager.setTouchAim(false)}
         />
       </div>
     </div>

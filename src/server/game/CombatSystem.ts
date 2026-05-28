@@ -3,15 +3,15 @@
 // Stateless utility functions for shot verification
 // ========================================
 
-import type { Vec3, AABB, PlayerState } from "../../shared/types/index.js";
+import type { Vec3, AABB } from "../../shared/types/index.js";
 import type { WeaponConfig } from "../../shared/constants/index.js";
 import { raycastPlayer, raycastMap } from "../../shared/physics/collision.js";
-import { vec3Distance, vec3Normalize } from "../../shared/physics/movement.js";
+import { vec3Distance } from "../../shared/physics/movement.js";
 import {
-  HEADSHOT_MULTIPLIER,
   PLAYER_EYE_OFFSET,
   PLAYER_HEIGHT,
 } from "../../shared/constants/index.js";
+import { getShotDirections } from "../../shared/combat/spread.js";
 import type { PlayerEntity } from "./PlayerEntity.js";
 
 export interface HitResult {
@@ -46,55 +46,10 @@ export function calculateDamage(
 
   // Headshot multiplier
   if (headshot) {
-    damage *= HEADSHOT_MULTIPLIER;
+    damage *= weaponConfig.headshotMultiplier;
   }
 
   return Math.round(damage);
-}
-
-/**
- * Generate a spread direction from a base direction.
- */
-function applySpread(direction: Vec3, spread: number): Vec3 {
-  const angle = Math.random() * Math.PI * 2;
-  const radius = Math.random() * spread;
-
-  // Create perpendicular vectors
-  let upX = 0,
-    upY = 1,
-    upZ = 0;
-  if (Math.abs(direction.y) > 0.9) {
-    upX = 1;
-    upY = 0;
-    upZ = 0;
-  }
-
-  // Cross product: direction × up = right
-  const rightX = direction.y * upZ - direction.z * upY;
-  const rightY = direction.z * upX - direction.x * upZ;
-  const rightZ = direction.x * upY - direction.y * upX;
-  const rLen = Math.sqrt(rightX * rightX + rightY * rightY + rightZ * rightZ);
-
-  // Cross product: right × direction = actualUp
-  const aUpX = (rightY / rLen) * direction.z - (rightZ / rLen) * direction.y;
-  const aUpY = (rightZ / rLen) * direction.x - (rightX / rLen) * direction.z;
-  const aUpZ = (rightX / rLen) * direction.y - (rightY / rLen) * direction.x;
-
-  const offsetX =
-    (rightX / rLen) * Math.cos(angle) * radius +
-    aUpX * Math.sin(angle) * radius;
-  const offsetY =
-    (rightY / rLen) * Math.cos(angle) * radius +
-    aUpY * Math.sin(angle) * radius;
-  const offsetZ =
-    (rightZ / rLen) * Math.cos(angle) * radius +
-    aUpZ * Math.sin(angle) * radius;
-
-  return vec3Normalize({
-    x: direction.x + offsetX,
-    y: direction.y + offsetY,
-    z: direction.z + offsetZ,
-  });
 }
 
 /**
@@ -108,6 +63,7 @@ export function validateShot(
   players: Map<string, PlayerEntity>,
   mapBoxes: AABB[],
   weaponConfig: WeaponConfig,
+  spreadSeed = 0,
 ): HitResult[] {
   const shooter = players.get(shooterId);
   if (!shooter) return [];
@@ -129,16 +85,15 @@ export function validateShot(
   const authOrigin = eyePos;
   const hits: HitResult[] = [];
 
-  // Determine number of rays (pellets for shotgun)
-  const pelletCount = weaponConfig.pellets || 1;
+  const shotDirections = getShotDirections(
+    direction,
+    weaponConfig,
+    spreadSeed,
+    shooter.state.velocity,
+    shooter.state.crouching,
+  );
 
-  for (let p = 0; p < pelletCount; p++) {
-    // Apply spread
-    const spreadDir =
-      pelletCount > 1 || weaponConfig.spread > 0
-        ? applySpread(direction, weaponConfig.spread)
-        : direction;
-
+  for (const spreadDir of shotDirections) {
     // Check wall hit distance first
     const wallHit = raycastMap(
       authOrigin,
@@ -179,12 +134,18 @@ export function validateShot(
     }
 
     if (closestHit) {
-      const damage = calculateDamage(
-        weaponConfig.damage,
-        closestHit.distance,
-        weaponConfig,
-        closestHit.headshot,
-      );
+      const damage =
+        weaponConfig.id === "sniper"
+          ? Math.ceil(
+              players.get(closestHit.targetId)!.state.health +
+                players.get(closestHit.targetId)!.state.armor,
+            )
+          : calculateDamage(
+              weaponConfig.damage,
+              closestHit.distance,
+              weaponConfig,
+              closestHit.headshot,
+            );
 
       // Check if we already hit this player (multiple pellets)
       const existing = hits.find((h) => h.targetId === closestHit!.targetId);

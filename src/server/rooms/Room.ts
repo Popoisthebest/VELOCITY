@@ -8,11 +8,10 @@ import type {
   InputState,
   Vec3,
   SpawnPoint,
-  Rotation,
 } from "../../shared/types/index.js";
 import { GamePhase, WeaponType } from "../../shared/types/index.js";
 import { PacketType } from "../../shared/protocol/index.js";
-import type { Packet, ServerPacket } from "../../shared/protocol/index.js";
+import type { ServerPacket } from "../../shared/protocol/index.js";
 import {
   TICK_INTERVAL,
   NETWORK_INTERVAL,
@@ -171,7 +170,12 @@ export class Room {
     }
   }
 
-  public handleShoot(playerId: string, origin: Vec3, direction: Vec3): void {
+  public handleShoot(
+    playerId: string,
+    origin: Vec3,
+    direction: Vec3,
+    spreadSeed: number,
+  ): void {
     const shooter = this.players.get(playerId);
     if (!shooter || !shooter.state.alive || shooter.state.reloading) return;
 
@@ -203,6 +207,7 @@ export class Room {
       this.players,
       ARENA_MAP.boxes,
       weaponConfig,
+      spreadSeed,
     );
 
     // Apply damage to hits
@@ -337,7 +342,6 @@ export class Room {
 
   private tick(): void {
     const now = Date.now();
-    const dt = (now - this.lastTickTime) / 1000;
     this.lastTickTime = now;
 
     if (this.phase === GamePhase.PLAYING) {
@@ -464,6 +468,11 @@ export class Room {
     for (const player of this.players.values()) {
       player.state.kills = 0;
       player.state.deaths = 0;
+      player.state.assists = 0;
+      player.state.score = 0;
+      player.state.streak = 0;
+      player.lastDamageBy = "";
+      player.damageLog.clear();
     }
 
     this.startGame();

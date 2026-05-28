@@ -7,6 +7,7 @@ import React, { useEffect, useState } from "react";
 import { useGameStore } from "../store/gameStore.js";
 import { t } from "../i18n/index.js";
 import { WEAPONS } from "@shared/constants/index.js";
+import { WeaponType } from "@shared/types/index.js";
 
 export function HUD() {
   const localPlayer = useGameStore((state) => state.localPlayer);
@@ -81,7 +82,12 @@ export function HUD() {
   const weaponConfig = WEAPONS[localPlayer.weapon];
   const weaponName = weaponConfig ? weaponConfig.name : "Unknown";
   const score = localPlayer.score;
-  
+  const scoped =
+    localPlayer.weapon === WeaponType.SNIPER &&
+    localPlayer.aiming &&
+    !isDead &&
+    gamePhase !== "ended";
+
   // Use a stable timestamp for rendering damage numbers to avoid purity warnings
   const renderTimestamp = Date.now();
   const protectionRemaining = Math.max(
@@ -113,6 +119,11 @@ export function HUD() {
         </div>
         <div className="px-4 py-2 rounded-2xl bg-slate-950/75 border border-slate-800/50 text-xs uppercase tracking-[0.2em] text-slate-300 shadow-lg shadow-black/10">
           {t("score")}: <span className="text-amber-400">{score}</span>
+          <span className="mx-2 text-slate-600">|</span>
+          {t("kills")}:{" "}
+          <span className="text-rose-300">
+            {localPlayer.kills}/{killLimit}
+          </span>
         </div>
       </div>
 
@@ -123,7 +134,7 @@ export function HUD() {
       )}
 
       {/* ── Dynamic Crosshair & Hitmarker ────────────────── */}
-      {!isDead && gamePhase !== "ended" && (
+      {!isDead && gamePhase !== "ended" && !scoped && (
         <>
           <div
             className="crosshair-container"
@@ -172,6 +183,38 @@ export function HUD() {
             </div>
           </div>
         </>
+      )}
+
+      {scoped && (
+        <div className="absolute inset-0 z-10 pointer-events-none">
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(circle at center, transparent 0 26vh, rgba(2,6,23,0.92) 26.4vh 100%)",
+            }}
+          />
+          <div className="absolute left-1/2 top-1/2 h-[52vh] w-[52vh] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-200/85 shadow-[0_0_0_2px_rgba(15,23,42,0.9),0_0_28px_rgba(148,163,184,0.32)_inset]">
+            <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-slate-100/80" />
+            <div className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-slate-100/80" />
+            <div className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-rose-300/90" />
+            {[-36, -24, -12, 12, 24, 36].map((offset) => (
+              <div
+                key={`h-${offset}`}
+                className="absolute left-1/2 top-1/2 h-2 w-px -translate-x-1/2 bg-slate-100/70"
+                style={{ transform: `translate(${offset}px, -50%)` }}
+              />
+            ))}
+            {[-36, -24, -12, 12, 24, 36].map((offset) => (
+              <div
+                key={`v-${offset}`}
+                className="absolute left-1/2 top-1/2 h-px w-2 -translate-y-1/2 bg-slate-100/70"
+                style={{ transform: `translate(-50%, ${offset}px)` }}
+              />
+            ))}
+          </div>
+          <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-rose-300 shadow-[0_0_12px_rgba(252,165,165,0.9)]" />
+        </div>
       )}
 
       {hp <= 35 && !isDead && gamePhase !== "ended" && (
@@ -319,7 +362,7 @@ export function HUD() {
               />
             </svg>
             <span className="text-slate-400 text-xs font-bold uppercase tracking-widest">
-              Restarting Match...
+              Restarting in {restartCountdown}s...
             </span>
           </div>
         </div>

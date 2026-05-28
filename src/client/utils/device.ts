@@ -4,14 +4,14 @@ export function isTouchDevice(): boolean {
     const hasTouch =
       typeof navigator !== "undefined" &&
       "maxTouchPoints" in navigator &&
-      (navigator as any).maxTouchPoints > 0;
+      (navigator as Navigator).maxTouchPoints > 0;
     const coarse =
       typeof window !== "undefined" &&
       window.matchMedia &&
       window.matchMedia("(pointer: coarse)").matches;
     const small = typeof window !== "undefined" && window.innerWidth <= 1024;
     return !!(hasTouch || coarse || small);
-  } catch (err) {
+  } catch {
     return false;
   }
 }

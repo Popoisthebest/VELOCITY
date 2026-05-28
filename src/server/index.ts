@@ -43,6 +43,18 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log("==================================================");
 });
 
+server.on("error", (error: NodeJS.ErrnoException) => {
+  if (error.code === "EADDRINUSE") {
+    console.error(
+      `[Server] Port ${PORT} is already in use. Stop the existing server or run with PORT=${PORT + 1}.`,
+    );
+  } else {
+    console.error("[Server] Failed to start:", error);
+  }
+  wsServer.shutdown();
+  process.exit(1);
+});
+
 // Graceful shutdown
 process.on("SIGTERM", () => {
   console.log("[Server] SIGTERM received. Shutting down...");

@@ -31,14 +31,14 @@ export function TouchButton({ onPress, onRelease, label, size = 64 }: Props) {
       e.preventDefault();
     };
 
-    el.addEventListener("pointerdown", onPointerDown as any);
-    window.addEventListener("pointerup", onPointerUp as any);
-    window.addEventListener("pointercancel", onPointerUp as any);
+    el.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
 
     return () => {
-      el.removeEventListener("pointerdown", onPointerDown as any);
-      window.removeEventListener("pointerup", onPointerUp as any);
-      window.removeEventListener("pointercancel", onPointerUp as any);
+      el.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
     };
   }, [onPress, onRelease]);
 

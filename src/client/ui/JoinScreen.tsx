@@ -8,8 +8,11 @@ import { useGameStore } from "../store/gameStore.js";
 import { networkClient } from "../network/NetworkClient.js";
 import { PacketType } from "@shared/protocol/index.js";
 import { WEAPONS } from "@shared/constants/index.js";
+import { WeaponType } from "@shared/types/index.js";
 import { inputManager } from "../systems/InputManager.js";
+import { audioManager } from "../systems/AudioManager.js";
 import { t } from "../i18n/index.js";
+import type { GraphicsQuality } from "../store/gameStore.js";
 
 export function JoinScreen() {
   const [name, setName] = useState("");
@@ -17,11 +20,40 @@ export function JoinScreen() {
   const [connecting, setConnecting] = useState(false);
 
   const setNickname = useGameStore((state) => state.setNickname);
+  const setStoreGraphicsQuality = useGameStore(
+    (state) => state.setGraphicsQuality,
+  );
+  const setStoreVolume = useGameStore((state) => state.setVolume);
+  const initialGraphicsQuality = useGameStore((state) => state.graphicsQuality);
+  const initialVolume = useGameStore((state) => state.volume);
 
-  const [selectedWeapon, setSelectedWeapon] = useState("assault_rifle");
+  const [selectedWeapon, setSelectedWeapon] = useState<WeaponType>(
+    WeaponType.ASSAULT_RIFLE,
+  );
   const [sensitivity, setSensitivity] = useState(inputManager.getSensitivity());
-  const [volume, setVolume] = useState(0.8);
-  const [graphicsQuality, setGraphicsQuality] = useState("high");
+  const [volume, setVolume] = useState(initialVolume);
+  const [graphicsQuality, setGraphicsQuality] = useState<GraphicsQuality>(
+    initialGraphicsQuality,
+  );
+
+  const resolveWebSocketUrl = (): string => {
+    const params = new URLSearchParams(window.location.search);
+    const queryWsUrl = params.get("ws");
+    if (queryWsUrl) return queryWsUrl;
+
+    const envWsUrl = import.meta.env.VITE_WS_URL as string | undefined;
+    if (envWsUrl) return envWsUrl;
+
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const { hostname, host } = window.location;
+    const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
+    if (isLocalhost) {
+      return `${wsProtocol}//${hostname}:3001`;
+    }
+
+    const forwardedServerHost = host.replace("3000", "3001");
+    return `${wsProtocol}//${forwardedServerHost}`;
+  };
 
   const handlePlay = (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,16 +72,12 @@ export function JoinScreen() {
     setConnecting(true);
     setNickname(trimmed);
     inputManager.setSensitivity(sensitivity);
+    setStoreGraphicsQuality(graphicsQuality);
+    setStoreVolume(volume);
+    audioManager.setMasterVolume(volume);
+    audioManager.ensureStarted();
 
-    // Dynamic websocket resolution based on environment or host
-    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const isLocalhost =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
-    const defaultWsUrl = isLocalhost
-      ? `${wsProtocol}//${window.location.hostname}:3001`
-      : `${wsProtocol}//${window.location.host}`;
-    const wsUrl = (import.meta.env.VITE_WS_URL as string) || defaultWsUrl;
+    const wsUrl = resolveWebSocketUrl();
 
     try {
       // Connect client
@@ -132,7 +160,7 @@ export function JoinScreen() {
             <select
               id="weapon"
               value={selectedWeapon}
-              onChange={(e) => setSelectedWeapon(e.target.value)}
+              onChange={(e) => setSelectedWeapon(e.target.value as WeaponType)}
               disabled={connecting}
               className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all font-semibold"
             >
@@ -179,7 +207,12 @@ export function JoinScreen() {
               max="1"
               step="0.05"
               value={volume}
-              onChange={(e) => setVolume(Number(e.target.value))}
+              onChange={(e) => {
+                const nextVolume = Number(e.target.value);
+                setVolume(nextVolume);
+                setStoreVolume(nextVolume);
+                audioManager.setMasterVolume(nextVolume);
+              }}
               disabled={connecting}
               className="w-full accent-amber-500"
             />
@@ -197,7 +230,11 @@ export function JoinScreen() {
             <select
               id="graphics"
               value={graphicsQuality}
-              onChange={(e) => setGraphicsQuality(e.target.value)}
+              onChange={(e) => {
+                const nextQuality = e.target.value as GraphicsQuality;
+                setGraphicsQuality(nextQuality);
+                setStoreGraphicsQuality(nextQuality);
+              }}
               disabled={connecting}
               className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all font-semibold"
             >

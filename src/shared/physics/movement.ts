@@ -4,7 +4,7 @@
 // Used by BOTH client (prediction) and server (authority)
 // ========================================
 
-import type { Vec3, InputState, Rotation } from "../types/index.js";
+import type { Vec3, InputState } from "../types/index.js";
 import {
   WALK_SPEED,
   SPRINT_SPEED,
@@ -20,7 +20,6 @@ import {
   GROUND_ACCELERATION,
   AIR_ACCELERATION,
   MAX_SPEED,
-  MAX_VELOCITY,
 } from "../constants/index.js";
 
 // ── Vec3 Helpers ─────────────────────────────────────────

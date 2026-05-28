@@ -9,8 +9,11 @@ import type {
   GamePhase,
   KillEvent,
   MapData,
-  WeaponType,
 } from "@shared/types/index.js";
+
+export type GraphicsQuality = "low" | "medium" | "high";
+
+type WinnerInfo = { id: string; nickname: string; kills: number };
 
 interface GameStore {
   // Connection
@@ -57,7 +60,11 @@ interface GameStore {
   respawnTime: number;
 
   // Winner info
-  winner: { id: string; nickname: string; kills: number } | null;
+  winner: WinnerInfo | null;
+
+  // Settings
+  graphicsQuality: GraphicsQuality;
+  volume: number;
 
   // Actions
   setConnected(connected: boolean): void;
@@ -69,7 +76,11 @@ interface GameStore {
   setRemotePlayers(players: Map<string, PlayerState>): void;
   addRemotePlayer(player: PlayerState): void;
   removeRemotePlayer(id: string): void;
-  setGamePhase(phase: GamePhase, timeRemaining: number, winner?: any): void;
+  setGamePhase(
+    phase: GamePhase,
+    timeRemaining: number,
+    winner?: WinnerInfo,
+  ): void;
   setMatchState(
     phase: GamePhase,
     timeRemaining: number,
@@ -84,6 +95,8 @@ interface GameStore {
   setMapData(map: MapData): void;
   setInGame(inGame: boolean): void;
   setDead(isDead: boolean, respawnTime: number): void;
+  setGraphicsQuality(quality: GraphicsQuality): void;
+  setVolume(volume: number): void;
   reset(): void;
 }
 
@@ -109,6 +122,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   isDead: false,
   respawnTime: 0,
   winner: null,
+  graphicsQuality: "high",
+  volume: 0.8,
 
   setConnected: (connected) => set({ connected }),
   setPlayerId: (playerId) => set({ playerId }),
@@ -138,10 +153,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((state) => ({
       gamePhase,
       timeRemaining,
-      winner: winner !== undefined ? winner : state.winner,
+      winner:
+        gamePhase === "ended"
+          ? winner !== undefined
+            ? winner
+            : state.winner
+          : null,
     })),
   setMatchState: (gamePhase, timeRemaining, killLimit) =>
-    set({ gamePhase, timeRemaining, killLimit }),
+    set((state) => ({
+      gamePhase,
+      timeRemaining,
+      killLimit,
+      winner: gamePhase === "ended" ? state.winner : null,
+    })),
   addKillEvent: (event) =>
     set((state) => {
       const eventId = Math.random().toString(36).substring(2, 9);
@@ -207,6 +232,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setMapData: (mapData) => set({ mapData }),
   setInGame: (inGame) => set({ inGame }),
   setDead: (isDead, respawnTime) => set({ isDead, respawnTime }),
+  setGraphicsQuality: (graphicsQuality) => set({ graphicsQuality }),
+  setVolume: (volume) => set({ volume }),
   reset: () =>
     set({
       roomId: null,

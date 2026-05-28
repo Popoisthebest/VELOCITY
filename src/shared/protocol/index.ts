@@ -60,6 +60,8 @@ export interface ShootPacket {
   type: PacketType.C_SHOOT;
   origin: Vec3;
   direction: Vec3;
+  shotId: number;
+  spreadSeed: number;
   timestamp: number;
 }
 

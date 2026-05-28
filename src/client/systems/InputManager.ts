@@ -25,6 +25,7 @@ export class InputManager {
   private touchCrouch = false;
   private touchSprint = false;
   private touchReload = false;
+  private touchAim = false;
 
   // Cumulative orientation (radians)
   public yaw = 0;
@@ -39,6 +40,7 @@ export class InputManager {
   private onMouseDownBind: (e: MouseEvent) => void;
   private onMouseUpBind: (e: MouseEvent) => void;
   private onPointerLockChangeBind: () => void;
+  private onContextMenuBind: (e: MouseEvent) => void;
 
   constructor() {
     this.onKeyDownBind = (e) => this.onKeyDown(e);
@@ -47,12 +49,14 @@ export class InputManager {
     this.onMouseDownBind = (e) => this.onMouseDown(e);
     this.onMouseUpBind = (e) => this.onMouseUp(e);
     this.onPointerLockChangeBind = () => this.onPointerLockChange();
+    this.onContextMenuBind = (e) => e.preventDefault();
 
     window.addEventListener("keydown", this.onKeyDownBind);
     window.addEventListener("keyup", this.onKeyUpBind);
     window.addEventListener("mousemove", this.onMouseMoveBind);
     window.addEventListener("mousedown", this.onMouseDownBind);
     window.addEventListener("mouseup", this.onMouseUpBind);
+    window.addEventListener("contextmenu", this.onContextMenuBind);
     document.addEventListener(
       "pointerlockchange",
       this.onPointerLockChangeBind,
@@ -98,6 +102,9 @@ export class InputManager {
   public setTouchReload(v: boolean): void {
     this.touchReload = v;
   }
+  public setTouchAim(v: boolean): void {
+    this.touchAim = v;
+  }
 
   private onKeyDown(e: KeyboardEvent): void {
     // Prevent default scrolling keys
@@ -119,11 +126,19 @@ export class InputManager {
     if (e.button === 0) {
       this.keys.set("MouseLeft", true);
     }
+    if (e.button === 2) {
+      this.keys.set("MouseRight", true);
+      e.preventDefault();
+    }
   }
 
   private onMouseUp(e: MouseEvent): void {
     if (e.button === 0) {
       this.keys.set("MouseLeft", false);
+    }
+    if (e.button === 2) {
+      this.keys.set("MouseRight", false);
+      e.preventDefault();
     }
   }
 
@@ -171,14 +186,17 @@ export class InputManager {
    * Generates input state and updates cumulative orientation
    */
   public getInputState(sequence: number, deltaTime: number): InputState {
+    const aiming = this.keys.get("MouseRight") || this.touchAim || false;
+    const lookScale = aiming ? 0.45 : 1;
+
     // Update orientation from accumulated mouse movement
-    this.yaw -= this.mouseDeltaX * this.sensitivity;
-    this.pitch -= this.mouseDeltaY * this.sensitivity;
+    this.yaw -= this.mouseDeltaX * this.sensitivity * lookScale;
+    this.pitch -= this.mouseDeltaY * this.sensitivity * lookScale;
 
     // Apply touch look deltas (if any)
     if (this.touchLookDX !== 0 || this.touchLookDY !== 0) {
-      this.yaw -= this.touchLookDX * this.touchSensitivity;
-      this.pitch -= this.touchLookDY * this.touchSensitivity;
+      this.yaw -= this.touchLookDX * this.touchSensitivity * lookScale;
+      this.pitch -= this.touchLookDY * this.touchSensitivity * lookScale;
       // reset accumulators
       this.touchLookDX = 0;
       this.touchLookDY = 0;
@@ -228,6 +246,7 @@ export class InputManager {
         this.keys.get("ControlLeft") ||
         this.touchCrouch ||
         false,
+      aim: aiming,
       shoot: this.keys.get("MouseLeft") || this.touchFire || false,
       reload: this.keys.get("KeyR") || this.touchReload || false,
       yaw: this.yaw,
@@ -252,6 +271,7 @@ export class InputManager {
     window.removeEventListener("mousemove", this.onMouseMoveBind);
     window.removeEventListener("mousedown", this.onMouseDownBind);
     window.removeEventListener("mouseup", this.onMouseUpBind);
+    window.removeEventListener("contextmenu", this.onContextMenuBind);
     document.removeEventListener(
       "pointerlockchange",
       this.onPointerLockChangeBind,

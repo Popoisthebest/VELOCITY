@@ -11,7 +11,6 @@ import { HUD } from "./ui/HUD.js";
 import { Scoreboard } from "./components/Scoreboard.js";
 import MobileControls from "./components/mobile/MobileControls.js";
 import NetworkDebugOverlay from "./ui/NetworkDebugOverlay.js";
-import { getInputMode } from "./utils/device.js";
 
 export function App() {
   const inGame = useGameStore((state) => state.inGame);
@@ -30,9 +29,8 @@ export function App() {
 
           <MobileControls />
           {/* Network debug overlay when ?netdebug=1 */}
-          {new URLSearchParams(window.location.search).get("netdebug") === "1" && (
-            <NetworkDebugOverlay />
-          )}
+          {new URLSearchParams(window.location.search).get("netdebug") ===
+            "1" && <NetworkDebugOverlay />}
           {/* Tab Scoreboard */}
           <Scoreboard />
         </>

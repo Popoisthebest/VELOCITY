@@ -47,7 +47,7 @@ export function RemotePlayer({ id }: RemotePlayerProps) {
     if (!groupRef.current) return;
 
     // Retrieve smooth interpolated state for this frame
-    const renderTime = Date.now() - 100; // 100ms interpolation buffer
+    const renderTime = interpolationSystem.getRenderTime();
     const interp = interpolationSystem.getInterpolatedState(id, renderTime);
 
     if (interp) {
