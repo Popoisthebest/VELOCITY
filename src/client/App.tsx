@@ -10,6 +10,7 @@ import { GameCanvas } from "./components/GameCanvas.js";
 import { HUD } from "./ui/HUD.js";
 import { Scoreboard } from "./components/Scoreboard.js";
 import MobileControls from "./components/mobile/MobileControls.js";
+import NetworkDebugOverlay from "./ui/NetworkDebugOverlay.js";
 import { getInputMode } from "./utils/device.js";
 
 export function App() {
@@ -28,6 +29,10 @@ export function App() {
           <HUD />
 
           <MobileControls />
+          {/* Network debug overlay when ?netdebug=1 */}
+          {new URLSearchParams(window.location.search).get("netdebug") === "1" && (
+            <NetworkDebugOverlay />
+          )}
           {/* Tab Scoreboard */}
           <Scoreboard />
         </>

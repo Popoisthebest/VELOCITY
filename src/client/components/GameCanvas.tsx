@@ -205,14 +205,11 @@ function GameLoopController() {
       rotation: { yaw: input.yaw, pitch: input.pitch },
     });
 
-    // 5. Send Input to Server (Throttled to NETWORK_INTERVAL)
-    if (now - lastInputSentTime.current >= NETWORK_INTERVAL) {
-      lastInputSentTime.current = now;
-      networkClient.send({
-        type: PacketType.C_INPUT,
-        input,
-      });
-    }
+    // 5. Send Input to Server (60Hz / every frame for zero-lag prediction simulation)
+    networkClient.send({
+      type: PacketType.C_INPUT,
+      input,
+    });
   });
 
   return null;

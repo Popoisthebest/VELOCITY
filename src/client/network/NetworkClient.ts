@@ -24,7 +24,6 @@ export class NetworkClient {
   private reconnectDelay = 1000;
   private pingInterval: NodeJS.Timeout | null = null;
   private lastPingSentTime = 0;
-  private readonly MAX_BUFFERED_AMOUNT = 256 * 1024;
 
   constructor() {}
 
@@ -93,20 +92,13 @@ export class NetworkClient {
   }
 
   private startPingLoop(): void {
-    this.stopPingLoop();
-
-    const sendPing = () => {
+    this.pingInterval = setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         const timestamp = Date.now();
         this.lastPingSentTime = timestamp;
         this.send({ type: PacketType.C_PING, timestamp });
       }
-    };
-
-    // Send immediate ping
-    sendPing();
-
-    this.pingInterval = setInterval(sendPing, 2000);
+    }, 2000);
   }
 
   private stopPingLoop(): void {
@@ -148,16 +140,9 @@ export class NetworkClient {
   }
 
   public send(packet: ClientPacket): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-
-    // Backpressure guard: drop non-critical high-frequency packets if buffer is full
-    if (this.ws.bufferedAmount > this.MAX_BUFFERED_AMOUNT) {
-      if (packet.type === PacketType.C_INPUT) {
-        return;
-      }
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(encodePacket(packet));
     }
-
-    this.ws.send(encodePacket(packet));
   }
 
   public isConnected(): boolean {
