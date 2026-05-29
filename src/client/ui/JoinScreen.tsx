@@ -3,7 +3,7 @@
 // Styled lobby with premium animations, inputs, and socket connections
 // ========================================
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useGameStore } from "../store/gameStore.js";
 import { networkClient } from "../network/NetworkClient.js";
 import { PacketType } from "@shared/protocol/index.js";
@@ -18,8 +18,11 @@ export function JoinScreen() {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const [selectedRoomId, setSelectedRoomId] = useState("__auto");
 
   const setNickname = useGameStore((state) => state.setNickname);
+  const connected = useGameStore((state) => state.connected);
+  const rooms = useGameStore((state) => state.rooms);
   const setStoreGraphicsQuality = useGameStore(
     (state) => state.setGraphicsQuality,
   );
@@ -36,7 +39,7 @@ export function JoinScreen() {
     initialGraphicsQuality,
   );
 
-  const resolveWebSocketUrl = (): string => {
+  const wsUrl = useMemo((): string => {
     const params = new URLSearchParams(window.location.search);
     const queryWsUrl = params.get("ws");
     if (queryWsUrl) return queryWsUrl;
@@ -53,6 +56,36 @@ export function JoinScreen() {
 
     const forwardedServerHost = host.replace("3000", "3001");
     return `${wsProtocol}//${forwardedServerHost}`;
+  }, []);
+
+  useEffect(() => {
+    const handleGameError = (event: Event) => {
+      const message =
+        event instanceof CustomEvent && typeof event.detail === "string"
+          ? event.detail
+          : "Server error";
+      setConnecting(false);
+      setError(message);
+    };
+
+    networkClient.connect(wsUrl);
+    window.addEventListener("game:error", handleGameError);
+    return () => {
+      window.removeEventListener("game:error", handleGameError);
+    };
+  }, [wsUrl]);
+
+  useEffect(() => {
+    if (connected) {
+      networkClient.requestRoomList();
+    }
+  }, [connected]);
+
+  const refreshRooms = () => {
+    networkClient.connect(wsUrl);
+    if (networkClient.isConnected()) {
+      networkClient.requestRoomList();
+    }
   };
 
   const handlePlay = (e: React.FormEvent) => {
@@ -77,7 +110,11 @@ export function JoinScreen() {
     audioManager.setMasterVolume(volume);
     audioManager.ensureStarted();
 
-    const wsUrl = resolveWebSocketUrl();
+    const roomId =
+      selectedRoomId === "__auto" || selectedRoomId === "__new"
+        ? undefined
+        : selectedRoomId;
+    const createNewRoom = selectedRoomId === "__new";
 
     try {
       // Connect client
@@ -92,6 +129,8 @@ export function JoinScreen() {
           networkClient.send({
             type: PacketType.C_JOIN,
             nickname: trimmed,
+            roomId,
+            createNewRoom,
             selectedWeapon,
           });
         }
@@ -150,6 +189,50 @@ export function JoinScreen() {
               className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all font-semibold"
             />
           </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label
+                htmlFor="room"
+                className="block text-xs font-bold text-slate-400 uppercase tracking-wider"
+              >
+                Room
+              </label>
+              <button
+                type="button"
+                onClick={refreshRooms}
+                disabled={connecting}
+                className="text-[10px] font-bold uppercase tracking-widest text-amber-400 hover:text-amber-300 disabled:opacity-40"
+              >
+                Refresh
+              </button>
+            </div>
+            <select
+              id="room"
+              value={selectedRoomId}
+              onChange={(e) => setSelectedRoomId(e.target.value)}
+              disabled={connecting}
+              className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all font-semibold"
+            >
+              <option value="__auto">Quick Match</option>
+              <option value="__new">Create New Room</option>
+              {rooms.map((room) => {
+                const unavailable =
+                  room.playerCount >= room.maxPlayers || room.phase === "ended";
+                return (
+                  <option key={room.id} value={room.id} disabled={unavailable}>
+                    {room.name} - {room.playerCount}/{room.maxPlayers} -{" "}
+                    {room.phase}
+                  </option>
+                );
+              })}
+            </select>
+            <div className="mt-1 text-xs text-slate-500">
+              {rooms.length === 0
+                ? "No active rooms. Create New Room will start one."
+                : `${rooms.length} room${rooms.length === 1 ? "" : "s"} available`}
+            </div>
+          </div>
+
           <div>
             <label
               htmlFor="weapon"

@@ -9,6 +9,7 @@ import { useGameStore } from "../store/gameStore.js";
 import { inputManager } from "../systems/InputManager.js";
 import { getInputMode } from "../utils/device.js";
 import { predictionSystem } from "../systems/PredictionSystem.js";
+import { interpolationSystem } from "../systems/InterpolationSystem.js";
 import { shootingSystem } from "../systems/ShootingSystem.js";
 import { networkClient } from "../network/NetworkClient.js";
 import { addVisualTracer, BulletTracers } from "./BulletTracer.js";
@@ -54,12 +55,14 @@ function calculateLocalHitPoint(
 
   // Player intersections
   for (const player of remotePlayers.values()) {
-    if (!player.alive) continue;
+    const renderPlayer =
+      interpolationSystem.getRenderedPlayerState(player.id) ?? player;
+    if (!renderPlayer.alive) continue;
     const playerHit = raycastPlayer(
       origin,
       direction,
-      player.position,
-      player.crouching,
+      renderPlayer.position,
+      renderPlayer.crouching,
       closestHitDist,
     );
     if (playerHit && playerHit.distance < closestHitDist) {

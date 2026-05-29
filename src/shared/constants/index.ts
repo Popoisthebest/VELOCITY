@@ -7,8 +7,18 @@
 
 export const TICK_RATE = 60;
 export const TICK_INTERVAL = 1000 / TICK_RATE; // ~16.67ms
-export const NETWORK_RATE = 20;
-export const NETWORK_INTERVAL = 1000 / NETWORK_RATE; // 50ms
+export const NETWORK_RATE = 30;
+export const NETWORK_INTERVAL = 1000 / NETWORK_RATE; // ~33.33ms
+
+// ── Network Debug ───────────────────────────────────────
+
+export const DEBUG_PING_INTERVAL = 1000; // ms
+export const DEBUG_LOG_INTERVAL = 1000; // ms
+export const DEBUG_WARNING_THROTTLE = 1000; // ms
+export const SNAPSHOT_INTERVAL_WARNING = 150; // ms
+export const INTERPOLATION_BUFFER_WARNING_LENGTH = 2;
+export const SERVER_TICK_DRIFT_WARNING = 100; // ms over target interval
+export const SERVER_SNAPSHOT_INTERVAL_WARNING = 150; // ms
 
 // ── Movement ─────────────────────────────────────────────
 
@@ -188,7 +198,13 @@ export const WEAPONS: Record<string, WeaponConfig> = {
 
 // ── Interpolation / Prediction ───────────────────────────
 
-export const INTERPOLATION_DELAY = 100; // ms — buffer for smooth remote rendering
-export const MAX_EXTRAPOLATION_TIME = 100; // ms — short fallback for jitter gaps
-export const PREDICTION_CORRECTION_RATE = 0.1; // how fast to lerp toward server state
-export const MAX_PREDICTION_ERROR = 6.0; // snap only on severe desync
+export const INTERPOLATION_DELAY = 180; // ms — buffer for smooth remote rendering
+export const MAX_EXTRAPOLATION_TIME = 250; // ms — short fallback for jitter gaps
+export const REMOTE_SNAP_DISTANCE = 8.0; // world units
+export const REMOTE_CORRECTION_STRENGTH = 0.003; // per ms soft correction
+export const REMOTE_MAX_EXTRAPOLATION_MS = 500;
+export const REMOTE_MIN_SNAPSHOT_DT_MS = 10;
+export const REMOTE_DEFAULT_SNAPSHOT_DT_MS = NETWORK_INTERVAL;
+export const REMOTE_MAX_SNAPSHOT_DT_MS = 500;
+export const PREDICTION_CORRECTION_RATE = 0.06; // how fast to lerp toward server state
+export const MAX_PREDICTION_ERROR = 10.0; // snap only on severe desync

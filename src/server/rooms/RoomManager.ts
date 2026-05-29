@@ -45,6 +45,7 @@ export class RoomManager {
     nickname: string,
     preferredRoomId?: string,
     selectedWeapon?: string,
+    createNewRoom = false,
   ): Room {
     // Check if player is already in a room
     const currentRoom = this.playerRooms.get(playerId);
@@ -58,15 +59,17 @@ export class RoomManager {
     let targetRoom: Room | undefined;
 
     // 1. Try preferred room
-    if (preferredRoomId) {
+    if (!createNewRoom && preferredRoomId) {
       const room = this.rooms.get(preferredRoomId);
       if (room && room.players.size < MAX_PLAYERS_PER_ROOM) {
         targetRoom = room;
+      } else {
+        throw new Error("Selected room is unavailable");
       }
     }
 
     // 2. Try to find any existing room with space
-    if (!targetRoom) {
+    if (!createNewRoom && !preferredRoomId && !targetRoom) {
       for (const room of this.rooms.values()) {
         if (
           room.players.size < MAX_PLAYERS_PER_ROOM &&

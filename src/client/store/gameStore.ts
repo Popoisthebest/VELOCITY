@@ -4,16 +4,76 @@
 // ========================================
 
 import { create } from "zustand";
+import { GamePhase } from "@shared/types/index.js";
 import type {
   PlayerState,
-  GamePhase,
   KillEvent,
   MapData,
+  RoomInfo,
 } from "@shared/types/index.js";
 
 export type GraphicsQuality = "low" | "medium" | "high";
 
 type WinnerInfo = { id: string; nickname: string; kills: number };
+
+export interface RttMetrics {
+  current: number;
+  avg: number;
+  min: number;
+  max: number;
+}
+
+export interface SnapshotDebugMetrics {
+  interval: number;
+  avg: number;
+  max: number;
+}
+
+export interface InterpolationDebugMetrics {
+  trackedPlayers: number;
+  extrapolationCount: number;
+  snapCount: number;
+  lastPlayerId: string | null;
+  correctionError: number;
+  velocityMagnitude: number;
+  extrapolating: boolean;
+  updatedAt: number;
+}
+
+export interface ServerDebugMetrics {
+  tickInterval: number;
+  tickAvg: number;
+  tickMax: number;
+  tickDrift: number;
+  snapshotInterval: number;
+  snapshotAvg: number;
+  snapshotMax: number;
+  snapshotDrift: number;
+  updatedAt: number;
+}
+
+export interface NetworkDebugMetrics {
+  rtt: RttMetrics;
+  snapshot: SnapshotDebugMetrics;
+  interpolation: InterpolationDebugMetrics;
+  server: ServerDebugMetrics | null;
+}
+
+const createInitialNetworkDebugMetrics = (): NetworkDebugMetrics => ({
+  rtt: { current: 0, avg: 0, min: 0, max: 0 },
+  snapshot: { interval: 0, avg: 0, max: 0 },
+  interpolation: {
+    trackedPlayers: 0,
+    extrapolationCount: 0,
+    snapCount: 0,
+    lastPlayerId: null,
+    correctionError: 0,
+    velocityMagnitude: 0,
+    extrapolating: false,
+    updatedAt: 0,
+  },
+  server: null,
+});
 
 interface GameStore {
   // Connection
@@ -21,6 +81,7 @@ interface GameStore {
   playerId: string | null;
   roomId: string | null;
   nickname: string;
+  rooms: RoomInfo[];
 
   // Local player
   localPlayer: PlayerState | null;
@@ -50,6 +111,7 @@ interface GameStore {
   // Network metrics
   ping: number;
   fps: number;
+  networkDebug: NetworkDebugMetrics;
 
   // Map
   mapData: MapData | null;
@@ -71,6 +133,7 @@ interface GameStore {
   setPlayerId(id: string): void;
   setRoomId(id: string): void;
   setNickname(name: string): void;
+  setRooms(rooms: RoomInfo[]): void;
   setLocalPlayer(player: PlayerState | null): void;
   updateLocalPlayer(partial: Partial<PlayerState>): void;
   setRemotePlayers(players: Map<string, PlayerState>): void;
@@ -91,6 +154,10 @@ interface GameStore {
   setShowScoreboard(show: boolean): void;
   setPing(ping: number): void;
   setFps(fps: number): void;
+  setRttMetrics(metrics: RttMetrics): void;
+  setSnapshotMetrics(metrics: SnapshotDebugMetrics): void;
+  setInterpolationMetrics(metrics: InterpolationDebugMetrics): void;
+  setServerDebugMetrics(metrics: ServerDebugMetrics): void;
   addDamageNumber(damage: number, headshot: boolean): void;
   setMapData(map: MapData): void;
   setInGame(inGame: boolean): void;
@@ -105,9 +172,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   playerId: null,
   roomId: null,
   nickname: "",
+  rooms: [],
   localPlayer: null,
   remotePlayers: new Map(),
-  gamePhase: "waiting",
+  gamePhase: GamePhase.WAITING,
   timeRemaining: 0,
   killLimit: 30,
   killFeed: [],
@@ -117,6 +185,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   showScoreboard: false,
   ping: 0,
   fps: 60,
+  networkDebug: createInitialNetworkDebugMetrics(),
   mapData: null,
   inGame: false,
   isDead: false,
@@ -129,6 +198,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setPlayerId: (playerId) => set({ playerId }),
   setRoomId: (roomId) => set({ roomId }),
   setNickname: (nickname) => set({ nickname }),
+  setRooms: (rooms) => set({ rooms }),
   setLocalPlayer: (localPlayer) => set({ localPlayer }),
   updateLocalPlayer: (partial) =>
     set((state) => ({
@@ -218,6 +288,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ping: state.ping === 0 ? ping : Math.round(state.ping * 0.9 + ping * 0.1),
     })),
   setFps: (fps) => set({ fps }),
+  setRttMetrics: (rtt) =>
+    set((state) => ({
+      networkDebug: { ...state.networkDebug, rtt },
+    })),
+  setSnapshotMetrics: (snapshot) =>
+    set((state) => ({
+      networkDebug: { ...state.networkDebug, snapshot },
+    })),
+  setInterpolationMetrics: (interpolation) =>
+    set((state) => ({
+      networkDebug: { ...state.networkDebug, interpolation },
+    })),
+  setServerDebugMetrics: (server) =>
+    set((state) => ({
+      networkDebug: { ...state.networkDebug, server },
+    })),
   addDamageNumber: (damage, headshot) => {
     const id = Math.random().toString(36).substring(2, 9);
     const entry = { id, damage, headshot, createdAt: Date.now() };
@@ -239,7 +325,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       roomId: null,
       localPlayer: null,
       remotePlayers: new Map(),
-      gamePhase: "waiting",
+      gamePhase: GamePhase.WAITING,
       timeRemaining: 0,
       killFeed: [],
       hitMarker: false,
@@ -248,5 +334,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       inGame: false,
       isDead: false,
       respawnTime: 0,
+      ping: 0,
+      networkDebug: createInitialNetworkDebugMetrics(),
     }),
 }));

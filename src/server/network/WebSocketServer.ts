@@ -44,6 +44,7 @@ export class WebSocketServer {
     this.connections.set(playerId, ws);
 
     console.log(`[WebSocketServer] Client connected: ${playerId}`);
+    this.sendRoomListToPlayer(playerId);
 
     ws.on("message", (message: Buffer | ArrayBuffer | Uint8Array) => {
       try {
@@ -79,20 +80,34 @@ export class WebSocketServer {
 
     this.connections.delete(playerId);
     this.roomManager.removePlayer(playerId);
+    this.broadcastRoomList();
     console.log(`[WebSocketServer] Client disconnected: ${playerId}`);
   }
 
   private handlePacket(playerId: string, packet: ClientPacket): void {
     switch (packet.type) {
       case PacketType.C_JOIN: {
-        this.roomManager.joinOrCreate(
-          playerId,
-          packet.nickname,
-          packet.roomId,
-          packet.selectedWeapon,
-        );
-        // Also send updated room list to all connection lobbies (in a real game, or just respond/broadcast)
-        this.broadcastRoomList();
+        try {
+          this.roomManager.joinOrCreate(
+            playerId,
+            packet.nickname,
+            packet.roomId,
+            packet.selectedWeapon,
+            packet.createNewRoom,
+          );
+          this.broadcastRoomList();
+        } catch (err) {
+          this.sendToPlayer(playerId, {
+            type: PacketType.S_ERROR,
+            message: err instanceof Error ? err.message : "Failed to join room",
+          });
+          this.sendRoomListToPlayer(playerId);
+        }
+        break;
+      }
+
+      case PacketType.C_ROOM_LIST: {
+        this.sendRoomListToPlayer(playerId);
         break;
       }
 
@@ -129,6 +144,7 @@ export class WebSocketServer {
         this.sendToPlayer(playerId, {
           type: PacketType.S_PONG,
           timestamp: packet.timestamp,
+          serverTime: Date.now(),
         });
         break;
       }
@@ -180,6 +196,13 @@ export class WebSocketServer {
         ws.send(payload);
       }
     }
+  }
+
+  private sendRoomListToPlayer(playerId: string): void {
+    this.sendToPlayer(playerId, {
+      type: PacketType.S_ROOM_LIST,
+      rooms: this.roomManager.getRoomsInfo(),
+    });
   }
 
   public shutdown(): void {

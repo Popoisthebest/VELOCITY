@@ -14,6 +14,7 @@ import { processMovement } from "../../shared/physics/movement.js";
 import { resolveCollisions } from "../../shared/physics/collision.js";
 import {
   MAX_HP,
+  TICK_INTERVAL,
   WEAPONS,
   RESPAWN_TIME,
   SPAWN_PROTECTION_TIME,
@@ -48,9 +49,19 @@ export class PlayerEntity {
       return;
     }
 
+    const maxTotalDeltaTime = (TICK_INTERVAL / 1000) * 3;
+    let totalDeltaTime = 0;
+
     while (this.inputQueue.length > 0) {
       const input = this.inputQueue.shift()!;
       const dt = Math.min(input.deltaTime, 0.05); // cap delta to prevent speed hacks
+
+      if (totalDeltaTime + dt > maxTotalDeltaTime) {
+        this.inputQueue.unshift(input);
+        break;
+      }
+
+      totalDeltaTime += dt;
 
       // Update rotation from input
       this.state.rotation.yaw = input.yaw;

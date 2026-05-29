@@ -43,12 +43,10 @@ export function RemotePlayer({ id }: RemotePlayerProps) {
   // Subscribe to local health/alive state to render nameplates
   const playerState = useGameStore((state) => state.remotePlayers.get(id));
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!groupRef.current) return;
 
-    // Retrieve smooth interpolated state for this frame
-    const renderTime = interpolationSystem.getRenderTime();
-    const interp = interpolationSystem.getInterpolatedState(id, renderTime);
+    const interp = interpolationSystem.updatePlayer(id, delta * 1000);
 
     if (interp) {
       // 1. Update overall group position

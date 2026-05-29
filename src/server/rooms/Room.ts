@@ -15,6 +15,10 @@ import type { ServerPacket } from "../../shared/protocol/index.js";
 import {
   TICK_INTERVAL,
   NETWORK_INTERVAL,
+  DEBUG_LOG_INTERVAL,
+  DEBUG_WARNING_THROTTLE,
+  SERVER_TICK_DRIFT_WARNING,
+  SERVER_SNAPSHOT_INTERVAL_WARNING,
   RESPAWN_TIME,
   KILL_LIMIT,
   TIME_LIMIT,
@@ -35,6 +39,13 @@ import { PlayerEntity } from "../game/PlayerEntity.js";
 import { validateShot } from "../game/CombatSystem.js";
 import { vec3Distance } from "../../shared/physics/movement.js";
 
+interface TimingStats {
+  interval: number;
+  avg: number;
+  max: number;
+  drift: number;
+}
+
 export class Room {
   public id: string;
   public name: string;
@@ -49,8 +60,24 @@ export class Room {
   private gameLoopInterval: NodeJS.Timeout | null = null;
   private snapshotInterval: NodeJS.Timeout | null = null;
   private lastTickTime = 0;
+  private lastSnapshotBroadcastTime = 0;
   private gameStartTime = 0;
   private shutdownCallback: () => void;
+  private readonly maxMetricSamples = 120;
+  private tickIntervalSamples: number[] = [];
+  private snapshotIntervalSamples: number[] = [];
+  private tickStats: TimingStats = { interval: 0, avg: 0, max: 0, drift: 0 };
+  private snapshotStats: TimingStats = {
+    interval: 0,
+    avg: 0,
+    max: 0,
+    drift: 0,
+  };
+  private lastTickLogTime = 0;
+  private lastTickWarningTime = 0;
+  private lastSnapshotLogTime = 0;
+  private lastSnapshotWarningTime = 0;
+  private lastDebugStatsBroadcastTime = 0;
 
   constructor(
     id: string,
@@ -69,7 +96,9 @@ export class Room {
   }
 
   private startIntervals(): void {
-    this.lastTickTime = Date.now();
+    const now = Date.now();
+    this.lastTickTime = now;
+    this.lastSnapshotBroadcastTime = now;
     this.gameLoopInterval = setInterval(() => this.tick(), TICK_INTERVAL);
     this.snapshotInterval = setInterval(
       () => this.broadcastSnapshot(),
@@ -342,7 +371,7 @@ export class Room {
 
   private tick(): void {
     const now = Date.now();
-    this.lastTickTime = now;
+    this.recordTickDebug(now);
 
     if (this.phase === GamePhase.PLAYING) {
       // Update remaining time
@@ -376,6 +405,9 @@ export class Room {
   }
 
   private broadcastSnapshot(): void {
+    const now = Date.now();
+    this.recordSnapshotBroadcastDebug(now);
+
     const playersRecord: Record<string, PlayerState> = {};
     const lastProcessedInput: Record<string, number> = {};
 
@@ -387,7 +419,7 @@ export class Room {
     this.broadcastToAll({
       type: PacketType.S_SNAPSHOT,
       tick: 0, // Tick counter can be simplified or omitted
-      timestamp: Date.now(),
+      timestamp: now,
       players: playersRecord,
       lastProcessedInput,
       match: {
@@ -396,6 +428,8 @@ export class Room {
         killLimit: this.killLimit,
       },
     });
+
+    this.maybeBroadcastDebugStats(now);
   }
 
   private checkWinConditions(): void {
@@ -508,5 +542,98 @@ export class Room {
     }
 
     return bestSpawn;
+  }
+
+  private recordTickDebug(now: number): void {
+    const interval = now - this.lastTickTime;
+    this.lastTickTime = now;
+    this.addMetricSample(this.tickIntervalSamples, interval);
+
+    const drift = Math.abs(interval - TICK_INTERVAL);
+    this.tickStats = {
+      interval: Math.round(interval),
+      avg: this.average(this.tickIntervalSamples),
+      max: Math.max(
+        ...this.tickIntervalSamples.map((sample) => Math.round(sample)),
+      ),
+      drift: Math.round(drift),
+    };
+
+    if (now - this.lastTickLogTime >= DEBUG_LOG_INTERVAL) {
+      this.lastTickLogTime = now;
+      console.log(
+        `[SERVER TICK] interval=${this.tickStats.interval}ms avg=${this.tickStats.avg}ms max=${this.tickStats.max}ms`,
+      );
+    }
+
+    if (
+      drift >= SERVER_TICK_DRIFT_WARNING &&
+      now - this.lastTickWarningTime >= DEBUG_WARNING_THROTTLE
+    ) {
+      this.lastTickWarningTime = now;
+      console.warn(
+        `[SERVER TICK WARNING] tick drift detected: ${this.tickStats.interval}ms`,
+      );
+    }
+  }
+
+  private recordSnapshotBroadcastDebug(now: number): void {
+    const interval = now - this.lastSnapshotBroadcastTime;
+    this.lastSnapshotBroadcastTime = now;
+    this.addMetricSample(this.snapshotIntervalSamples, interval);
+
+    const drift = Math.abs(interval - NETWORK_INTERVAL);
+    this.snapshotStats = {
+      interval: Math.round(interval),
+      avg: this.average(this.snapshotIntervalSamples),
+      max: Math.max(
+        ...this.snapshotIntervalSamples.map((sample) => Math.round(sample)),
+      ),
+      drift: Math.round(drift),
+    };
+
+    if (now - this.lastSnapshotLogTime >= DEBUG_LOG_INTERVAL) {
+      this.lastSnapshotLogTime = now;
+      console.log(
+        `[SERVER SNAPSHOT] interval=${this.snapshotStats.interval}ms avg=${this.snapshotStats.avg}ms max=${this.snapshotStats.max}ms`,
+      );
+    }
+
+    if (
+      interval >= SERVER_SNAPSHOT_INTERVAL_WARNING &&
+      now - this.lastSnapshotWarningTime >= DEBUG_WARNING_THROTTLE
+    ) {
+      this.lastSnapshotWarningTime = now;
+      console.warn(
+        `[SERVER SNAPSHOT WARNING] interval spike detected: ${this.snapshotStats.interval}ms`,
+      );
+    }
+  }
+
+  private maybeBroadcastDebugStats(now: number): void {
+    if (now - this.lastDebugStatsBroadcastTime < DEBUG_LOG_INTERVAL) return;
+
+    this.lastDebugStatsBroadcastTime = now;
+    this.broadcastToAll({
+      type: PacketType.S_DEBUG_STATS,
+      roomId: this.id,
+      timestamp: now,
+      tick: this.tickStats,
+      snapshot: this.snapshotStats,
+    });
+  }
+
+  private addMetricSample(samples: number[], value: number): void {
+    samples.push(value);
+    if (samples.length > this.maxMetricSamples) {
+      samples.shift();
+    }
+  }
+
+  private average(samples: number[]): number {
+    if (samples.length === 0) return 0;
+    return Math.round(
+      samples.reduce((total, value) => total + value, 0) / samples.length,
+    );
   }
 }

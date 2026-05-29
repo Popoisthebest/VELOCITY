@@ -14,6 +14,11 @@ import NetworkDebugOverlay from "./ui/NetworkDebugOverlay.js";
 
 export function App() {
   const inGame = useGameStore((state) => state.inGame);
+  const searchParams = new URLSearchParams(window.location.search);
+  const showNetworkDebug =
+    ["localhost", "127.0.0.1"].includes(window.location.hostname) ||
+    searchParams.get("debugNet") === "1" ||
+    searchParams.get("netdebug") === "1";
 
   return (
     <div className="relative w-screen h-screen bg-slate-950 overflow-hidden font-game text-slate-100 select-none">
@@ -28,9 +33,8 @@ export function App() {
           <HUD />
 
           <MobileControls />
-          {/* Network debug overlay when ?netdebug=1 */}
-          {new URLSearchParams(window.location.search).get("netdebug") ===
-            "1" && <NetworkDebugOverlay />}
+          {/* Network debug overlay in local dev or when ?debugNet=1 */}
+          {showNetworkDebug && <NetworkDebugOverlay />}
           {/* Tab Scoreboard */}
           <Scoreboard />
         </>

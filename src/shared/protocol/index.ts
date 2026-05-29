@@ -26,6 +26,7 @@ export enum PacketType {
   C_SHOOT = 3,
   C_RELOAD = 4,
   C_PING = 5,
+  C_ROOM_LIST = 6,
 
   // Server → Client
   S_JOIN_ACK = 10,
@@ -40,6 +41,7 @@ export enum PacketType {
   S_GAME_PHASE = 19,
   S_ROOM_LIST = 20,
   S_ERROR = 21,
+  S_DEBUG_STATS = 22,
 }
 
 // ── Client → Server Packets ──────────────────────────────
@@ -48,6 +50,7 @@ export interface JoinPacket {
   type: PacketType.C_JOIN;
   nickname: string;
   roomId?: string;
+  createNewRoom?: boolean;
   selectedWeapon?: WeaponType;
 }
 
@@ -72,6 +75,10 @@ export interface ReloadPacket {
 export interface PingPacket {
   type: PacketType.C_PING;
   timestamp: number;
+}
+
+export interface RoomListRequestPacket {
+  type: PacketType.C_ROOM_LIST;
 }
 
 // ── Server → Client Packets ──────────────────────────────
@@ -149,11 +156,30 @@ export interface RoomListPacket {
 export interface PongPacket {
   type: PacketType.S_PONG;
   timestamp: number;
+  serverTime: number;
 }
 
 export interface ErrorPacket {
   type: PacketType.S_ERROR;
   message: string;
+}
+
+export interface DebugStatsPacket {
+  type: PacketType.S_DEBUG_STATS;
+  roomId: string;
+  timestamp: number;
+  tick: {
+    interval: number;
+    avg: number;
+    max: number;
+    drift: number;
+  };
+  snapshot: {
+    interval: number;
+    avg: number;
+    max: number;
+    drift: number;
+  };
 }
 
 // ── Union Types ──────────────────────────────────────────
@@ -163,7 +189,8 @@ export type ClientPacket =
   | InputPacket
   | ShootPacket
   | ReloadPacket
-  | PingPacket;
+  | PingPacket
+  | RoomListRequestPacket;
 
 export type ServerPacket =
   | JoinAckPacket
@@ -177,7 +204,8 @@ export type ServerPacket =
   | GamePhasePacket
   | RoomListPacket
   | PongPacket
-  | ErrorPacket;
+  | ErrorPacket
+  | DebugStatsPacket;
 
 export type Packet = ClientPacket | ServerPacket;
 

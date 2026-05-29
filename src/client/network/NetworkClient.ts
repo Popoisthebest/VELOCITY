@@ -9,6 +9,13 @@ import {
   PacketType,
 } from "@shared/protocol/index.js";
 import type { ClientPacket, ServerPacket } from "@shared/protocol/index.js";
+import type { PlayerState } from "@shared/types/index.js";
+import {
+  DEBUG_LOG_INTERVAL,
+  DEBUG_PING_INTERVAL,
+  DEBUG_WARNING_THROTTLE,
+  SNAPSHOT_INTERVAL_WARNING,
+} from "@shared/constants/index.js";
 import { useGameStore } from "../store/gameStore.js";
 import { predictionSystem } from "../systems/PredictionSystem.js";
 import { interpolationSystem } from "../systems/InterpolationSystem.js";
@@ -23,7 +30,13 @@ export class NetworkClient {
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private reconnectDelay = 1000;
   private pingInterval: NodeJS.Timeout | null = null;
-  private lastPingSentTime = 0;
+  private readonly maxMetricSamples = 120;
+  private rttSamples: number[] = [];
+  private snapshotIntervalSamples: number[] = [];
+  private lastSnapshotArrivalTime: number | null = null;
+  private lastRttLogTime = 0;
+  private lastSnapshotLogTime = 0;
+  private lastSnapshotWarningTime = 0;
 
   constructor() {}
 
@@ -64,6 +77,7 @@ export class NetworkClient {
       console.log("[NetworkClient] Connected to server");
       this.isConnecting = false;
       this.reconnectDelay = 1000;
+      this.clearDebugMetrics();
       useGameStore.getState().setConnected(true);
 
       // Start ping loop
@@ -92,19 +106,24 @@ export class NetworkClient {
   }
 
   private startPingLoop(): void {
+    this.stopPingLoop();
+    this.sendPing();
+
     this.pingInterval = setInterval(() => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        const timestamp = Date.now();
-        this.lastPingSentTime = timestamp;
-        this.send({ type: PacketType.C_PING, timestamp });
-      }
-    }, 2000);
+      this.sendPing();
+    }, DEBUG_PING_INTERVAL);
   }
 
   private stopPingLoop(): void {
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
+    }
+  }
+
+  private sendPing(): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.send({ type: PacketType.C_PING, timestamp: performance.now() });
     }
   }
 
@@ -145,6 +164,10 @@ export class NetworkClient {
     }
   }
 
+  public requestRoomList(): void {
+    this.send({ type: PacketType.C_ROOM_LIST });
+  }
+
   public isConnected(): boolean {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }
@@ -154,17 +177,20 @@ export class NetworkClient {
 
     switch (packet.type) {
       case PacketType.S_JOIN_ACK: {
+        interpolationSystem.clear();
         store.setPlayerId(packet.playerId);
         store.setRoomId(packet.roomId);
         store.setMapData(packet.map);
         store.setGamePhase(packet.state.phase, packet.state.timeRemaining);
 
         // Populate players
-        const remoteMap = new Map();
+        const remoteMap = new Map<string, PlayerState>();
+        const joinSnapshotTime = Date.now();
         for (const [id, state] of Object.entries(packet.state.players)) {
           if (id === packet.playerId) {
             store.setLocalPlayer(state);
           } else {
+            interpolationSystem.addSnapshot(id, state, joinSnapshotTime);
             remoteMap.set(id, state);
           }
         }
@@ -176,6 +202,11 @@ export class NetworkClient {
 
       case PacketType.S_PLAYER_JOINED: {
         if (packet.player.id !== store.playerId) {
+          interpolationSystem.addSnapshot(
+            packet.player.id,
+            packet.player,
+            Date.now(),
+          );
           store.addRemotePlayer(packet.player);
         }
         break;
@@ -188,6 +219,8 @@ export class NetworkClient {
       }
 
       case PacketType.S_SNAPSHOT: {
+        this.recordSnapshotArrival();
+
         // Update match state from server
         if (packet.match) {
           store.setMatchState(
@@ -233,27 +266,16 @@ export class NetworkClient {
           }
         }
 
-        // 2. Process remote players for interpolation
+        // 2. Process remote players for render smoothing. Keep store authoritative
+        // to the latest server snapshot; RemotePlayer reads smoothed render state
+        // directly from InterpolationSystem each frame.
         const remotePlayersMap = new Map<string, PlayerState>();
 
         for (const [id, state] of Object.entries(serverPlayers)) {
           if (id === localId) continue;
 
-          // Buffer snapshot for interpolation
           interpolationSystem.addSnapshot(id, state, packet.timestamp);
-
-          // Get the current interpolated state for rendering
-          const renderTime = interpolationSystem.getRenderTime();
-          const interpState = interpolationSystem.getInterpolatedState(
-            id,
-            renderTime,
-          );
-
-          if (interpState) {
-            remotePlayersMap.set(id, interpState);
-          } else {
-            remotePlayersMap.set(id, state); // Fallback to raw server state
-          }
+          remotePlayersMap.set(id, state);
         }
 
         store.setRemotePlayers(remotePlayersMap);
@@ -306,9 +328,34 @@ export class NetworkClient {
         break;
       }
 
+      case PacketType.S_ROOM_LIST: {
+        store.setRooms(packet.rooms);
+        break;
+      }
+
       case PacketType.S_PONG: {
-        const latency = Math.round(Date.now() - packet.timestamp);
-        store.setPing(latency);
+        const receiveTime = performance.now();
+        this.recordRtt(receiveTime - packet.timestamp);
+        interpolationSystem.updateClockOffset(
+          packet.serverTime,
+          packet.timestamp,
+          receiveTime,
+        );
+        break;
+      }
+
+      case PacketType.S_DEBUG_STATS: {
+        store.setServerDebugMetrics({
+          tickInterval: packet.tick.interval,
+          tickAvg: packet.tick.avg,
+          tickMax: packet.tick.max,
+          tickDrift: packet.tick.drift,
+          snapshotInterval: packet.snapshot.interval,
+          snapshotAvg: packet.snapshot.avg,
+          snapshotMax: packet.snapshot.max,
+          snapshotDrift: packet.snapshot.drift,
+          updatedAt: packet.timestamp,
+        });
         break;
       }
 
@@ -316,6 +363,9 @@ export class NetworkClient {
         console.error(
           "[NetworkClient] Server error packet received:",
           packet.message,
+        );
+        window.dispatchEvent(
+          new CustomEvent("game:error", { detail: packet.message }),
         );
         break;
       }
@@ -326,6 +376,88 @@ export class NetworkClient {
           (packet as { type: unknown }).type,
         );
     }
+  }
+
+  private recordRtt(rawRtt: number): void {
+    const current = Math.max(0, Math.round(rawRtt));
+    this.addMetricSample(this.rttSamples, current);
+
+    const metrics = {
+      current,
+      avg: this.average(this.rttSamples),
+      min: Math.min(...this.rttSamples),
+      max: Math.max(...this.rttSamples),
+    };
+
+    const store = useGameStore.getState();
+    store.setPing(current);
+    store.setRttMetrics(metrics);
+
+    const now = performance.now();
+    if (now - this.lastRttLogTime >= DEBUG_LOG_INTERVAL) {
+      this.lastRttLogTime = now;
+      console.log(
+        `[NET RTT] current=${metrics.current}ms avg=${metrics.avg}ms min=${metrics.min}ms max=${metrics.max}ms`,
+      );
+    }
+  }
+
+  private recordSnapshotArrival(): void {
+    const now = performance.now();
+    if (this.lastSnapshotArrivalTime === null) {
+      this.lastSnapshotArrivalTime = now;
+      return;
+    }
+
+    const interval = Math.round(now - this.lastSnapshotArrivalTime);
+    this.lastSnapshotArrivalTime = now;
+    this.addMetricSample(this.snapshotIntervalSamples, interval);
+
+    const metrics = {
+      interval,
+      avg: this.average(this.snapshotIntervalSamples),
+      max: Math.max(...this.snapshotIntervalSamples),
+    };
+
+    useGameStore.getState().setSnapshotMetrics(metrics);
+
+    if (now - this.lastSnapshotLogTime >= DEBUG_LOG_INTERVAL) {
+      this.lastSnapshotLogTime = now;
+      console.log(
+        `[SNAPSHOT] interval=${metrics.interval}ms avg=${metrics.avg}ms max=${metrics.max}ms`,
+      );
+    }
+
+    if (
+      interval >= SNAPSHOT_INTERVAL_WARNING &&
+      now - this.lastSnapshotWarningTime >= DEBUG_WARNING_THROTTLE
+    ) {
+      this.lastSnapshotWarningTime = now;
+      console.warn(`[SNAPSHOT WARNING] interval spike detected: ${interval}ms`);
+    }
+  }
+
+  private addMetricSample(samples: number[], value: number): void {
+    samples.push(value);
+    if (samples.length > this.maxMetricSamples) {
+      samples.shift();
+    }
+  }
+
+  private average(samples: number[]): number {
+    if (samples.length === 0) return 0;
+    return Math.round(
+      samples.reduce((total, value) => total + value, 0) / samples.length,
+    );
+  }
+
+  private clearDebugMetrics(): void {
+    this.rttSamples = [];
+    this.snapshotIntervalSamples = [];
+    this.lastSnapshotArrivalTime = null;
+    this.lastRttLogTime = 0;
+    this.lastSnapshotLogTime = 0;
+    this.lastSnapshotWarningTime = 0;
   }
 }
 export const networkClient = NetworkClient.getInstance();

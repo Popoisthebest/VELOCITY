@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { PacketType, encodePacket, decodePacket } from "./index.js";
 import type {
+  DebugStatsPacket,
   JoinPacket,
   PingPacket,
   PongPacket,
+  RoomListRequestPacket,
   ShootPacket,
 } from "./index.js";
 import { WeaponType } from "../types/index.js";
@@ -13,6 +15,7 @@ describe("Network Protocol", () => {
     const packet: JoinPacket = {
       type: PacketType.C_JOIN,
       nickname: "Player1",
+      createNewRoom: true,
       selectedWeapon: WeaponType.ASSAULT_RIFLE,
     };
 
@@ -24,7 +27,17 @@ describe("Network Protocol", () => {
       throw new Error("Expected join packet");
     }
     expect(decoded.nickname).toBe("Player1");
+    expect(decoded.createNewRoom).toBe(true);
     expect(decoded.selectedWeapon).toBe(WeaponType.ASSAULT_RIFLE);
+  });
+
+  it("should encode and decode a room list request", () => {
+    const packet: RoomListRequestPacket = {
+      type: PacketType.C_ROOM_LIST,
+    };
+
+    const decoded = decodePacket(encodePacket(packet));
+    expect(decoded.type).toBe(PacketType.C_ROOM_LIST);
   });
 
   it("should encode and decode a PingPacket correctly", () => {
@@ -67,6 +80,7 @@ describe("Network Protocol", () => {
     const packet: PongPacket = {
       type: PacketType.S_PONG,
       timestamp: 12345,
+      serverTime: 67890,
     };
 
     const encoded = encodePacket(packet);
@@ -76,5 +90,27 @@ describe("Network Protocol", () => {
 
     const decoded = decodePacket(encoded);
     expect(decoded.type).toBe(PacketType.S_PONG);
+    if (decoded.type !== PacketType.S_PONG) {
+      throw new Error("Expected pong packet");
+    }
+    expect(decoded.serverTime).toBe(67890);
+  });
+
+  it("should encode and decode debug stats", () => {
+    const packet: DebugStatsPacket = {
+      type: PacketType.S_DEBUG_STATS,
+      roomId: "room-1",
+      timestamp: 1000,
+      tick: { interval: 17, avg: 17, max: 30, drift: 1 },
+      snapshot: { interval: 33, avg: 35, max: 120, drift: 2 },
+    };
+
+    const decoded = decodePacket(encodePacket(packet));
+    expect(decoded.type).toBe(PacketType.S_DEBUG_STATS);
+    if (decoded.type !== PacketType.S_DEBUG_STATS) {
+      throw new Error("Expected debug stats packet");
+    }
+    expect(decoded.tick.max).toBe(30);
+    expect(decoded.snapshot.max).toBe(120);
   });
 });
