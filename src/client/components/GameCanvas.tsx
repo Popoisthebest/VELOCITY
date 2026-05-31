@@ -76,11 +76,6 @@ function calculateLocalHitPoint(
 
 function GameLoopController() {
   const { camera } = useThree();
-  const localPlayer = useGameStore((state) => state.localPlayer);
-  const remotePlayers = useGameStore((state) => state.remotePlayers);
-  const mapData = useGameStore((state) => state.mapData);
-  const isDead = useGameStore((state) => state.isDead);
-  const gamePhase = useGameStore((state) => state.gamePhase);
 
   const inputSequence = useRef(0);
   const wasShootPressed = useRef(false);
@@ -89,16 +84,20 @@ function GameLoopController() {
   const fpsTimer = useRef(0);
   const fpsCount = useRef(0);
 
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     const now = Date.now();
+    const store = useGameStore.getState();
+    const localPlayer = store.localPlayer;
+    const remotePlayers = store.remotePlayers;
+    const mapData = store.mapData;
+    const isDead = store.isDead;
+    const gamePhase = store.gamePhase;
 
     // 1. Calculate FPS
     fpsCount.current++;
     fpsTimer.current += delta;
     if (fpsTimer.current >= 0.5) {
-      useGameStore
-        .getState()
-        .setFps(Math.round(fpsCount.current / fpsTimer.current));
+      store.setFps(Math.round(fpsCount.current / fpsTimer.current));
       fpsCount.current = 0;
       fpsTimer.current = 0;
     }
@@ -208,7 +207,7 @@ function GameLoopController() {
     }
 
     // Update store with predicted local state
-    useGameStore.getState().setLocalPlayer({
+    store.setLocalPlayer({
       ...nextLocalPlayer,
       position: collResult.position,
       velocity: collResult.velocity,

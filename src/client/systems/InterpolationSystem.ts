@@ -67,7 +67,7 @@ export class InterpolationSystem {
     serverTimestamp: number,
   ): void {
     const now = Date.now();
-    const localTimestamp = serverTimestamp - this.clockOffset;
+    const snapshotTime = serverTimestamp - this.clockOffset;
     const serverPosition = copyVec3(state.position);
     const existing = this.remoteStates.get(playerId);
 
@@ -78,7 +78,7 @@ export class InterpolationSystem {
         previousTargetPosition: copyVec3(serverPosition),
         velocity: copyVec3(state.velocity),
         smoothedVelocity: copyVec3(state.velocity),
-        lastSnapshotTime: localTimestamp,
+        lastSnapshotTime: snapshotTime,
         lastSnapshotReceivedAt: now,
         lastUpdateTime: now,
         isExtrapolating: false,
@@ -93,9 +93,8 @@ export class InterpolationSystem {
 
     const wasRespawned = !existing.latestState.alive && state.alive;
     const previousTargetPosition = copyVec3(existing.targetPosition);
-    const dtMs = sanitizeSnapshotDtMs(
-      localTimestamp - existing.lastSnapshotTime,
-    );
+    const receivedDtMs = now - existing.lastSnapshotReceivedAt;
+    const dtMs = sanitizeSnapshotDtMs(receivedDtMs);
     const dtSeconds = dtMs / 1000;
     const estimatedVelocity = {
       x: (serverPosition.x - previousTargetPosition.x) / dtSeconds,
@@ -117,7 +116,7 @@ export class InterpolationSystem {
     existing.previousTargetPosition = previousTargetPosition;
     existing.targetPosition = serverPosition;
     existing.velocity = copyVec3(existing.smoothedVelocity);
-    existing.lastSnapshotTime = localTimestamp;
+    existing.lastSnapshotTime = snapshotTime;
     existing.lastSnapshotReceivedAt = now;
     existing.latestState = clonePlayerState(state);
     existing.snapshotCount += 1;

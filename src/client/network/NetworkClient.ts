@@ -266,19 +266,14 @@ export class NetworkClient {
           }
         }
 
-        // 2. Process remote players for render smoothing. Keep store authoritative
-        // to the latest server snapshot; RemotePlayer reads smoothed render state
-        // directly from InterpolationSystem each frame.
-        const remotePlayersMap = new Map<string, PlayerState>();
-
+        // 2. Process remote players for render smoothing. Avoid replacing the
+        // remote player Map every snapshot; that forces 30Hz React rerenders.
         for (const [id, state] of Object.entries(serverPlayers)) {
           if (id === localId) continue;
 
           interpolationSystem.addSnapshot(id, state, packet.timestamp);
-          remotePlayersMap.set(id, state);
+          store.updateRemotePlayerMetadata(state);
         }
-
-        store.setRemotePlayers(remotePlayersMap);
         break;
       }
 

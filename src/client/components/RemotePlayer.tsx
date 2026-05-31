@@ -3,7 +3,7 @@
 // Renders other players as 3D capsules with nametags, health bars, and smooth frame interpolation
 // ========================================
 
-import React, { useRef } from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import { interpolationSystem } from "../systems/InterpolationSystem.js";
@@ -40,51 +40,57 @@ export function RemotePlayer({ id }: RemotePlayerProps) {
   const capsuleRef = useRef<THREE.Mesh>(null);
   const color = getPlayerColor(id);
 
-  // Subscribe to local health/alive state to render nameplates
-  const playerState = useGameStore((state) => state.remotePlayers.get(id));
+  const isAlive = useGameStore(
+    (state) => state.remotePlayers.get(id)?.alive ?? false,
+  );
+  const nickname = useGameStore(
+    (state) => state.remotePlayers.get(id)?.nickname ?? "",
+  );
+  const health = useGameStore(
+    (state) => state.remotePlayers.get(id)?.health ?? 100,
+  );
+
+  useLayoutEffect(() => {
+    if (groupRef.current) {
+      groupRef.current.visible = false;
+    }
+  }, []);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
 
     const interp = interpolationSystem.updatePlayer(id, delta * 1000);
 
-    if (interp) {
-      // 1. Update overall group position
-      groupRef.current.position.set(
-        interp.position.x,
-        interp.position.y,
-        interp.position.z,
-      );
-
-      // 2. Update mesh rotation
-      groupRef.current.rotation.y = interp.rotation.yaw;
-
-      // 3. Handle crouch scaling dynamically
-      if (capsuleRef.current) {
-        const height = interp.crouching ? PLAYER_CROUCH_HEIGHT : PLAYER_HEIGHT;
-        capsuleRef.current.scale.set(
-          1,
-          interp.crouching ? PLAYER_CROUCH_HEIGHT / PLAYER_HEIGHT : 1.0,
-          1,
-        );
-        capsuleRef.current.position.y = height / 2;
-      }
-
-      // Make sure the group is visible
-      groupRef.current.visible = interp.alive;
-    } else if (playerState) {
-      // Fallback to last known store state
-      groupRef.current.position.set(
-        playerState.position.x,
-        playerState.position.y,
-        playerState.position.z,
-      );
-      groupRef.current.rotation.y = playerState.rotation.yaw;
-      groupRef.current.visible = playerState.alive;
+    if (!interp) {
+      return;
     }
+
+    // 1. Update overall group position
+    groupRef.current.position.set(
+      interp.position.x,
+      interp.position.y,
+      interp.position.z,
+    );
+
+    // 2. Update mesh rotation
+    groupRef.current.rotation.y = interp.rotation.yaw;
+
+    // 3. Handle crouch scaling dynamically
+    if (capsuleRef.current) {
+      const height = interp.crouching ? PLAYER_CROUCH_HEIGHT : PLAYER_HEIGHT;
+      capsuleRef.current.scale.set(
+        1,
+        interp.crouching ? PLAYER_CROUCH_HEIGHT / PLAYER_HEIGHT : 1.0,
+        1,
+      );
+      capsuleRef.current.position.y = height / 2;
+    }
+
+    // Make sure the group is visible
+    groupRef.current.visible = interp.alive;
   });
 
-  if (!playerState || !playerState.alive) return null;
+  if (!isAlive) return null;
 
   return (
     <group ref={groupRef}>
@@ -119,7 +125,7 @@ export function RemotePlayer({ id }: RemotePlayerProps) {
           <div className="w-16 h-1.5 bg-gray-900/80 border border-gray-900 rounded overflow-hidden mb-1">
             <div
               className="h-full bg-emerald-500 transition-all duration-100"
-              style={{ width: `${playerState.health}%` }}
+              style={{ width: `${health}%` }}
             />
           </div>
           {/* Nickname */}
@@ -127,7 +133,7 @@ export function RemotePlayer({ id }: RemotePlayerProps) {
             className="px-1.5 py-0.5 rounded text-xs font-bold text-white tracking-wide shadow"
             style={{ backgroundColor: `${color}cc` }}
           >
-            {playerState.nickname}
+            {nickname}
           </span>
         </div>
       </Html>

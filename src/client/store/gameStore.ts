@@ -138,6 +138,7 @@ interface GameStore {
   updateLocalPlayer(partial: Partial<PlayerState>): void;
   setRemotePlayers(players: Map<string, PlayerState>): void;
   addRemotePlayer(player: PlayerState): void;
+  updateRemotePlayerMetadata(player: PlayerState): void;
   removeRemotePlayer(id: string): void;
   setGamePhase(
     phase: GamePhase,
@@ -211,6 +212,51 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((state) => {
       const newMap = new Map(state.remotePlayers);
       newMap.set(player.id, player);
+      return { remotePlayers: newMap };
+    }),
+  updateRemotePlayerMetadata: (player) =>
+    set((state) => {
+      const current = state.remotePlayers.get(player.id);
+      if (!current) {
+        const newMap = new Map(state.remotePlayers);
+        newMap.set(player.id, player);
+        return { remotePlayers: newMap };
+      }
+
+      const changed =
+        current.nickname !== player.nickname ||
+        current.health !== player.health ||
+        current.armor !== player.armor ||
+        current.alive !== player.alive ||
+        current.weapon !== player.weapon ||
+        current.ammo !== player.ammo ||
+        current.maxAmmo !== player.maxAmmo ||
+        current.reloading !== player.reloading ||
+        current.kills !== player.kills ||
+        current.deaths !== player.deaths ||
+        current.assists !== player.assists ||
+        current.score !== player.score ||
+        current.streak !== player.streak;
+
+      if (!changed) return state;
+
+      const newMap = new Map(state.remotePlayers);
+      newMap.set(player.id, {
+        ...current,
+        nickname: player.nickname,
+        health: player.health,
+        armor: player.armor,
+        alive: player.alive,
+        weapon: player.weapon,
+        ammo: player.ammo,
+        maxAmmo: player.maxAmmo,
+        reloading: player.reloading,
+        kills: player.kills,
+        deaths: player.deaths,
+        assists: player.assists,
+        score: player.score,
+        streak: player.streak,
+      });
       return { remotePlayers: newMap };
     }),
   removeRemotePlayer: (id) =>

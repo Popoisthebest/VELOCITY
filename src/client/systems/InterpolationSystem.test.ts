@@ -32,6 +32,7 @@ describe("remote player dead reckoning", () => {
     const system = new InterpolationSystem();
 
     system.addSnapshot("p1", createPlayerAt("p1", 0), 1000);
+    vi.setSystemTime(50);
     system.addSnapshot("p1", createPlayerAt("p1", 1), 1050);
 
     const rendered = system.updatePlayer("p1", 25);
@@ -39,6 +40,18 @@ describe("remote player dead reckoning", () => {
     expect(rendered?.position.x).toBeGreaterThan(0);
     expect(rendered?.position.x).toBeLessThan(1);
     expect(rendered?.velocity.x).toBeCloseTo(8);
+  });
+
+  it("uses client receive interval instead of server snapshot interval for velocity", () => {
+    const system = new InterpolationSystem();
+
+    system.addSnapshot("p1", createPlayerAt("p1", 0), 1000);
+    vi.setSystemTime(200);
+    system.addSnapshot("p1", createPlayerAt("p1", 1), 1033);
+
+    const rendered = system.updatePlayer("p1", 25);
+
+    expect(rendered?.velocity.x).toBeCloseTo(2);
   });
 
   it("uses fast lerp for large but plausible correction errors", () => {
